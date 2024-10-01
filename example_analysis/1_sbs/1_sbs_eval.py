@@ -36,11 +36,8 @@ def load_and_concatenate_hdfs(hdf_well_load_path):
 # Concatenate files
 print("Concatenating files...")
 reads = load_and_concatenate_hdfs(f"{HDFS_DIR}/reads_*.hdf")
-print(reads.shape)
 cells = load_and_concatenate_hdfs(f"{HDFS_DIR}/cells_*.hdf")
-print(cells.shape)
 sbs_info = load_and_concatenate_hdfs(f"{HDFS_DIR}/sbs_info_*.hdf")
-print(sbs_info.shape)
 
 # Generate plots
 print("Generating plots...")

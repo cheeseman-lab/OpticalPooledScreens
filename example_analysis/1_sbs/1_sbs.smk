@@ -90,51 +90,6 @@ def get_file(f):
 rule all:
     input:
         expand(
-            f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif",
-            well=WELLS,
-            tile=TILES,
-        ),
-        expand(
-            f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif",
-            well=WELLS,
-            tile=TILES,
-        ),
-        expand(
-            f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.std.tif",
-            well=WELLS,
-            tile=TILES,
-        ),
-        expand(
-            f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif",
-            well=WELLS,
-            tile=TILES,
-        ),
-        expand(
-            f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.maxed.tif",
-            well=WELLS,
-            tile=TILES,
-        ),
-        expand(
-            f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.illumination_correction.tif",
-            well=WELLS,
-            tile=TILES,
-        ),
-        expand(
-            f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.nuclei.tif",
-            well=WELLS,
-            tile=TILES,
-        ),
-        expand(
-            f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.tif",
-            well=WELLS,
-            tile=TILES,
-        ),
-        expand(
-            f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv",
-            well=WELLS,
-            tile=TILES,
-        ),
-        expand(
             f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
             well=WELLS,
             tile=TILES,
@@ -149,8 +104,8 @@ rule all:
             well=WELLS,
             tile=TILES,
         ),
-        expand(f"{HDFS_DIR}/cells_{{well}}.hdf", well=WELLS),
         expand(f"{HDFS_DIR}/reads_{{well}}.hdf", well=WELLS),
+        expand(f"{HDFS_DIR}/cells_{{well}}.hdf", well=WELLS),
         expand(f"{HDFS_DIR}/sbs_info_{{well}}.hdf", well=WELLS),
 
 
@@ -164,7 +119,7 @@ rule align:
             for cycle in SBS_CYCLES
         ],
     output:
-        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif",
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif"),
     run:
         # Read each cycle image into a list
         data = [read(f) for f in input]
@@ -191,7 +146,7 @@ rule transform_LoG:
     input:
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif",
     output:
-        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif",
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif"),
     run:
         Snake_sbs.transform_log(
             data=input[0],
@@ -217,7 +172,7 @@ rule find_peaks:
     input:
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.std.tif",
     output:
-        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif",
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif"),
     run:
         Snake_sbs.find_peaks(data=input[0], output=output)
 
@@ -227,7 +182,7 @@ rule max_filter:
     input:
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif",
     output:
-        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.maxed.tif",
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.maxed.tif"),
     run:
         Snake_sbs.max_filter(data=input[0], output=output, width=3, remove_index=0)
 
@@ -240,7 +195,7 @@ rule illumination_correction:
             cycle=SBS_CYCLES[SEGMENTATION_CYCLE]
         ),
     output:
-        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.illumination_correction.tif",
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.illumination_correction.tif"),
     run:
         aligned = read(input[0])
         aligned_0 = aligned[0]
@@ -257,8 +212,8 @@ rule segment:
     input:
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.illumination_correction.tif",
     output:
-        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.nuclei.tif",
-        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.tif",
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.nuclei.tif"),
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.tif"),
     run:
         Snake_sbs.segment_cellpose(
             data=input[0],
@@ -278,7 +233,7 @@ rule extract_bases:
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.maxed.tif",
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.tif",
     output:
-        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv",
+        temp(f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv"),
     run:
         Snake_sbs.extract_bases(
             peaks=input[0],

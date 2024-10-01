@@ -60,7 +60,7 @@ Run `sbs_1_eval.py` to generate quality control plots and statistics for the SBS
 python 1_sbs_eval.py
 ```
 
-## File structure for running
+## File structure
 
 ```
 1_sbs_smk_test.ipynb
