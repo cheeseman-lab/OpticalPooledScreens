@@ -80,8 +80,6 @@ def plot_gene_symbol_histogram(df, x_cutoff=40):
     # Count occurrences of each unique gene_symbol_0
     gene_symbol_counts = df["gene_symbol_0"].value_counts()
 
-    print(gene_symbol_counts)
-
     plt.figure(figsize=(12, 7))
     sns.set_style("white")
 
