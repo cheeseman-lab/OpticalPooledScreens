@@ -12,9 +12,8 @@ venv_ops_new/
 # Google IDX environment specifications
 .idx/
 
-# Outputs that are too large for GitHub
-example_analysis/1_sbs/output/
-example_analysis/1_sbs/processing/
+# Example files that are too large for GitHub
+example_analysis/1_sbs/output/*/*.tif
 
 # Snakemake process files
 example_analysis/1_sbs/.snakemake/

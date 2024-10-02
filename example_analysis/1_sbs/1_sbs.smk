@@ -10,23 +10,24 @@ from ops.imports import read
 import ops.io
 
 # Output directory for notebook results
-INPUT_FILES_DIR = "input"
-OUTPUT_FILES_DIR = "output"
-PROCESSING_FILES_DIR = "processing"
+INPUT_DIR = "input"
+IMAGES_DIR = "output/images"
+TABLES_DIR = "output/tables"
+HDFS_DIR = "output/hdfs"
 
 # Define lists of cycles
 SBS_CYCLES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 CYCLE_FILES = None
 
 # Define wells and tiles
-WELLS = ['A1']
-TILES = [50]
+WELLS = ["A1", "A2"]
+TILES = [1, 100]
 
 # Define channels
 CHANNELS = None
 
 # Define the file pattern for preprocessing image files
-PREPROCESS_PATTERN = "{input_dir}/10X_c{cycle}-SBS-{cycle}_{{well}}_Tile-{{tile}}.sbs.tif"
+PREPROCESS_PATTERN = "10X_c{cycle}-SBS-{cycle}_{{well}}_Tile-{{tile}}.sbs.tif"
 
 # Define display ranges for different channels, recognized by ImageJ
 DISPLAY_RANGES = [
@@ -46,11 +47,18 @@ LUTS = [
     ops.io.CYAN,  # Lookup table for CY7 channel
 ]
 
+# Define the ic file pattern
+IC_PREPROCESS_PATTERN = (
+    "10X_c{cycle}-SBS-{cycle}_{well}.sbs.illumination_correction.tif"
+)
+
 # Define cycle to use for segmentation, -1 for last cycle
 SEGMENTATION_CYCLE = -1
 
 # Define illumination correction file for use in segmentation
-ICF_FILE_NAME = "10X_c{cycle}-SBS-{cycle}_{{well}}.sbs.illumination_correction.tif"
+IC_PREPROCESS_PATTERN = (
+    "10X_c{cycle}-SBS-{cycle}_{{well}}.sbs.illumination_correction.tif"
+)
 
 # Define Cellpose segmentation parameters
 DAPI_INDEX = 0
@@ -77,117 +85,135 @@ def get_file(f):
     except pd.errors.EmptyDataError:
         pass
 
-# Defines the final output files for the pipeline, ensuring generation of files for each combination of well and tile
+
+# Defines the output files for testing the alignment function for a specific well and tile
 rule all:
     input:
-        expand(f'{OUTPUT_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv', well=WELLS, tile=TILES),
-        expand(f'{OUTPUT_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.csv', well=WELLS, tile=TILES),
-        expand(f'{OUTPUT_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.sbs_info.csv', well=WELLS, tile=TILES),
-        
-# Aligns images from each sequencing round 
+        expand(
+            f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
+            well=WELLS,
+            tile=TILES,
+        ),
+        expand(
+            f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.csv",
+            well=WELLS,
+            tile=TILES,
+        ),
+        expand(
+            f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.sbs_info.csv",
+            well=WELLS,
+            tile=TILES,
+        ),
+        expand(f"{HDFS_DIR}/reads_{{well}}.hdf", well=WELLS),
+        expand(f"{HDFS_DIR}/cells_{{well}}.hdf", well=WELLS),
+        expand(f"{HDFS_DIR}/sbs_info_{{well}}.hdf", well=WELLS),
+
+
+# Aligns images from each sequencing round
 rule align:
     input:
-        [PREPROCESS_PATTERN.format(input_dir=INPUT_FILES_DIR, cycle=cycle) for cycle in SBS_CYCLES]
+        [
+            f"{INPUT_DIR}/sbs_tifs/{PREPROCESS_PATTERN}".format(
+                cycle=cycle, well="{well}", tile="{tile}"
+            )
+            for cycle in SBS_CYCLES
+        ],
     output:
-        temp(f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif")
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif"),
     run:
         # Read each cycle image into a list
         data = [read(f) for f in input]
-        
+
         # Print number of data points for verification
         print(f"Number of images loaded: {len(data)}")
 
         # Call the alignment function from Snake_sbs
         Snake_sbs.align_SBS(
-            output=output, 
-            data=data, 
-            method='SBS_mean', 
-            cycle_files=CYCLE_FILES, 
-            upsample_factor=1, 
-            n=1, 
+            output=output,
+            data=data,
+            method="SBS_mean",
+            cycle_files=CYCLE_FILES,
+            upsample_factor=1,
+            n=1,
             keep_extras=False,
-            display_ranges=DISPLAY_RANGES, 
-            luts=LUTS
+            display_ranges=DISPLAY_RANGES,
+            luts=LUTS,
         )
+
 
 # Applies Laplacian-of-Gaussian filter to all channels
 rule transform_LoG:
     input:
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif"
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif",
     output:
-        temp(f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif")
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif"),
     run:
         Snake_sbs.transform_log(
-            data=input[0], 
-            output=output, 
+            data=input[0],
+            output=output,
             skip_index=0,
-            display_ranges=DISPLAY_RANGES, 
-            luts=LUTS
+            display_ranges=DISPLAY_RANGES,
+            luts=LUTS,
         )
+
 
 # Computes standard deviation of SBS reads across cycles
 rule compute_std:
     input:
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif"
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif",
     output:
-        temp(f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.std.tif")
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.std.tif",
     run:
-        Snake_sbs.compute_std(
-            data=input[0], 
-            output=output, 
-            remove_index=0
-        )
+        Snake_sbs.compute_std(data=input[0], output=output, remove_index=0)
+
 
 # Find local maxima of SBS reads across cycles
 rule find_peaks:
     input:
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.std.tif"
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.std.tif",
     output:
-        temp(f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif")
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif"),
     run:
-        Snake_sbs.find_peaks(
-            data=input[0],
-            output=output
-        )
+        Snake_sbs.find_peaks(data=input[0], output=output)
+
 
 # Dilates sequencing channels to compensate for single-pixel alignment error.
 rule max_filter:
     input:
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif"
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.log.tif",
     output:
-        temp(f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.maxed.tif")
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.maxed.tif"),
     run:
-        Snake_sbs.max_filter(
-            data=input[0],
-            output=output,
-            width=3,
-            remove_index=0
-        )
+        Snake_sbs.max_filter(data=input[0], output=output, width=3, remove_index=0)
+
 
 # Applies illumination correction to cycle 0
 rule illumination_correction:
     input:
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif",
-        'input/10X_c{cycle}-SBS-{cycle}_{{well}}.sbs.illumination_correction.tif'.format(cycle=SBS_CYCLES[SEGMENTATION_CYCLE]),
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.aligned.tif",
+        f"{INPUT_DIR}/sbs_ic_tifs/{IC_PREPROCESS_PATTERN}".format(
+            cycle=SBS_CYCLES[SEGMENTATION_CYCLE]
+        ),
     output:
-        temp(f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.illumination_correction.tif")
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.illumination_correction.tif"),
     run:
         aligned = read(input[0])
         aligned_0 = aligned[0]
         print(aligned_0.shape)
         Snake_sbs.apply_illumination_correction(
-            data=aligned_0, 
+            data=aligned_0,
             correction=input[1],
-            output=output, 
+            output=output,
         )
+
 
 # Segments cells and nuclei using pre-defined methods
 rule segment:
     input:
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.illumination_correction.tif",
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.illumination_correction.tif",
     output:
-        temp(f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.nuclei.tif"),
-        temp(f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.tif")
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.nuclei.tif"),
+        temp(f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.tif"),
     run:
         Snake_sbs.segment_cellpose(
             data=input[0],
@@ -196,69 +222,110 @@ rule segment:
             cyto_index=CYTO_CHANNEL,
             nuclei_diameter=NUCLEI_DIAMETER,
             cell_diameter=CELL_DIAMETER,
-            cyto_model=CYTO_MODEL
+            cyto_model=CYTO_MODEL,
         )
+
 
 # Extract bases from peaks
 rule extract_bases:
     input:
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif",
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.maxed.tif",
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.tif",
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif",
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.maxed.tif",
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.tif",
     output:
-        temp(f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv")
+        temp(f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv"),
     run:
         Snake_sbs.extract_bases(
-            peaks=input[0], 
-            maxed=input[1], 
-            cells=input[2], 
-            output=output, 
-            threshold_peaks=THRESHOLD_READS, 
-            bases=BASES, 
-            wildcards=dict(wildcards)
+            peaks=input[0],
+            maxed=input[1],
+            cells=input[2],
+            output=output,
+            threshold_peaks=THRESHOLD_READS,
+            bases=BASES,
+            wildcards=dict(wildcards),
         )
+
 
 # Call reads
 rule call_reads:
     input:
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv",
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif",
+        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv",
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif",
     output:
-        f"{OUTPUT_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
+        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
     run:
         Snake_sbs.call_reads(
-            df_bases=input[0], 
-            peaks=input[1], 
-            output=output, 
+            df_bases=input[0],
+            peaks=input[1],
+            output=output,
         )
+
 
 # Call cells
 rule call_cells:
     input:
-        f"{OUTPUT_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
+        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
     output:
-        f"{OUTPUT_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.csv",
+        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.csv",
     run:
         df_design = pd.read_csv(DF_DESIGN_PATH)
         df_pool = df_design.query("dialout==[0,1]").drop_duplicates("sgRNA")
-
         Snake_sbs.call_cells(
-            df_reads=input[0], 
-            output=output, 
-            df_pool=df_pool, 
-            q_min=Q_MIN
+            df_reads=input[0], output=output, df_pool=df_pool, q_min=Q_MIN
         )
+
 
 # Extract minimal phenotype features
 rule sbs_cell_info:
-    input: 
-        f"{PROCESSING_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.nuclei.tif",
+    input:
+        f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.nuclei.tif",
     output:
-        f"{OUTPUT_FILES_DIR}/10X_{{well}}_Tile-{{tile}}.sbs_info.csv",
+        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.sbs_info.csv",
     run:
         Snake_sbs.extract_phenotype_minimal(
-            data_phenotype=input[0], 
-            nuclei=input[0], 
-            output=output, 
-            wildcards=wildcards
+            data_phenotype=input[0], nuclei=input[0], output=output, wildcards=wildcards
         )
+
+
+# Rule for combining alignment results from different wells
+rule merge_cells:
+    input:
+        lambda wildcards: expand(
+            f"{TABLES_DIR}/10X_{wildcards.well}_Tile-{{tile}}.cells.csv", tile=TILES
+        ),
+    output:
+        f"{HDFS_DIR}/cells_{{well}}.hdf",
+    run:
+        arr_cells = Parallel(n_jobs=threads)(delayed(get_file)(file) for file in input)
+        df_cells = pd.concat(arr_cells)
+        df_cells.to_hdf(output[0], "x", mode="w")
+
+
+# Rule for combining alignment results from different wells
+rule merge_reads:
+    input:
+        lambda wildcards: expand(
+            f"{TABLES_DIR}/10X_{wildcards.well}_Tile-{{tile}}.reads.csv", tile=TILES
+        ),
+    output:
+        f"{HDFS_DIR}/reads_{{well}}.hdf",
+    run:
+        arr_reads = Parallel(n_jobs=threads)(delayed(get_file)(file) for file in input)
+        df_reads = pd.concat(arr_reads)
+        df_reads.to_hdf(output[0], "x", mode="w")
+
+
+# Rule for combining alignment results from different wells
+rule merge_sbs_info:
+    input:
+        lambda wildcards: expand(
+            f"{TABLES_DIR}/10X_{wildcards.well}_Tile-{{tile}}.sbs_info.csv", tile=TILES
+        ),
+    output:
+        f"{HDFS_DIR}/sbs_info_{{well}}.hdf",
+    run:
+        arr_sbs_info = Parallel(n_jobs=threads)(
+            delayed(get_file)(file) for file in input
+        )
+        df_sbs_info = pd.concat(arr_sbs_info)
+        df_sbs_info.to_hdf(output[0], "x", mode="w")

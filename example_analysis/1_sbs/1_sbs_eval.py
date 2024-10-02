@@ -1,17 +1,18 @@
 import os
+import glob
+
 import pandas as pd
 import matplotlib.pyplot as plt
-from glob import glob
+
 from ops.qc import *
-from ops.sbs_smk import Snake_sbs
 
 # SET PARAMETERS
-OUTPUT_FILES_DIR = "output"
 DF_DESIGN_PATH = "input/pool10_design.csv"
-READS_PATH = "output/10X_A1_Tile-50.reads.csv"
-CELLS_PATH = "output/10X_A1_Tile-50.cells.csv"
-SBS_INFO_PATH = "output/10X_A1_Tile-50.sbs_info.csv"
+HDFS_DIR = "output/hdfs"
+OUTPUT_FILES_DIR = "output/eval"
 
+# create output directory if it doesn't exist
+os.makedirs(OUTPUT_FILES_DIR, exist_ok=True)
 
 # Read barcodes
 df_design = pd.read_csv(DF_DESIGN_PATH)
@@ -19,10 +20,24 @@ df_pool = df_design.query("dialout==[0,1]").drop_duplicates("sgRNA")
 df_pool["prefix"] = df_pool.apply(lambda x: x.sgRNA[: x.prefix_length], axis=1)  # 13
 barcodes = df_pool["prefix"]
 
-# Load SBS output files
-reads = pd.read_csv(READS_PATH)
-cells = pd.read_csv(CELLS_PATH)
-sbs_info = pd.read_csv(SBS_INFO_PATH)
+# helper function to load and concatenate hdfs
+def load_and_concatenate_hdfs(hdf_well_load_path):
+    # Find all HDF files matching the provided path pattern
+    hdf_files = glob.glob(hdf_well_load_path)
+    
+    # Load each HDF file into a pandas DataFrame
+    dfs = [pd.read_hdf(file) for file in hdf_files]
+    
+    # Concatenate all DataFrames into a single DataFrame
+    concatenated_df = pd.concat(dfs, ignore_index=True)
+    
+    return concatenated_df
+
+# Concatenate files
+print("Concatenating files...")
+reads = load_and_concatenate_hdfs(f"{HDFS_DIR}/reads_*.hdf")
+cells = load_and_concatenate_hdfs(f"{HDFS_DIR}/cells_*.hdf")
+sbs_info = load_and_concatenate_hdfs(f"{HDFS_DIR}/sbs_info_*.hdf")
 
 # Generate plots
 print("Generating plots...")
