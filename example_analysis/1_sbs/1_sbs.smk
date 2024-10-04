@@ -12,7 +12,7 @@ import ops.io
 # Output directory for notebook results
 INPUT_DIR = "input"
 IMAGES_DIR = "output/images"
-TABLES_DIR = "output/tables"
+CSVS_DIR = "output/csvs"
 HDFS_DIR = "output/hdfs"
 
 # Define lists of cycles
@@ -90,17 +90,17 @@ def get_file(f):
 rule all:
     input:
         expand(
-            f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
+            f"{CSVS_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
             well=WELLS,
             tile=TILES,
         ),
         expand(
-            f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.csv",
+            f"{CSVS_DIR}/10X_{{well}}_Tile-{{tile}}.cells.csv",
             well=WELLS,
             tile=TILES,
         ),
         expand(
-            f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.sbs_info.csv",
+            f"{CSVS_DIR}/10X_{{well}}_Tile-{{tile}}.sbs_info.csv",
             well=WELLS,
             tile=TILES,
         ),
@@ -233,7 +233,7 @@ rule extract_bases:
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.maxed.tif",
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.tif",
     output:
-        temp(f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv"),
+        temp(f"{CSVS_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv"),
     run:
         Snake_sbs.extract_bases(
             peaks=input[0],
@@ -249,10 +249,10 @@ rule extract_bases:
 # Call reads
 rule call_reads:
     input:
-        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv",
+        f"{CSVS_DIR}/10X_{{well}}_Tile-{{tile}}.bases.csv",
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.peaks.tif",
     output:
-        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
+        f"{CSVS_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
     run:
         Snake_sbs.call_reads(
             df_bases=input[0],
@@ -264,9 +264,9 @@ rule call_reads:
 # Call cells
 rule call_cells:
     input:
-        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
+        f"{CSVS_DIR}/10X_{{well}}_Tile-{{tile}}.reads.csv",
     output:
-        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.cells.csv",
+        f"{CSVS_DIR}/10X_{{well}}_Tile-{{tile}}.cells.csv",
     run:
         df_design = pd.read_csv(DF_DESIGN_PATH)
         df_pool = df_design.query("dialout==[0,1]").drop_duplicates("sgRNA")
@@ -280,7 +280,7 @@ rule sbs_cell_info:
     input:
         f"{IMAGES_DIR}/10X_{{well}}_Tile-{{tile}}.nuclei.tif",
     output:
-        f"{TABLES_DIR}/10X_{{well}}_Tile-{{tile}}.sbs_info.csv",
+        f"{CSVS_DIR}/10X_{{well}}_Tile-{{tile}}.sbs_info.csv",
     run:
         Snake_sbs.extract_phenotype_minimal(
             data_phenotype=input[0], nuclei=input[0], output=output, wildcards=wildcards
@@ -291,7 +291,7 @@ rule sbs_cell_info:
 rule merge_cells:
     input:
         lambda wildcards: expand(
-            f"{TABLES_DIR}/10X_{wildcards.well}_Tile-{{tile}}.cells.csv", tile=TILES
+            f"{CSVS_DIR}/10X_{wildcards.well}_Tile-{{tile}}.cells.csv", tile=TILES
         ),
     output:
         f"{HDFS_DIR}/cells_{{well}}.hdf",
@@ -305,7 +305,7 @@ rule merge_cells:
 rule merge_reads:
     input:
         lambda wildcards: expand(
-            f"{TABLES_DIR}/10X_{wildcards.well}_Tile-{{tile}}.reads.csv", tile=TILES
+            f"{CSVS_DIR}/10X_{wildcards.well}_Tile-{{tile}}.reads.csv", tile=TILES
         ),
     output:
         f"{HDFS_DIR}/reads_{{well}}.hdf",
@@ -319,7 +319,7 @@ rule merge_reads:
 rule merge_sbs_info:
     input:
         lambda wildcards: expand(
-            f"{TABLES_DIR}/10X_{wildcards.well}_Tile-{{tile}}.sbs_info.csv", tile=TILES
+            f"{CSVS_DIR}/10X_{wildcards.well}_Tile-{{tile}}.sbs_info.csv", tile=TILES
         ),
     output:
         f"{HDFS_DIR}/sbs_info_{{well}}.hdf",
