@@ -41,6 +41,7 @@ sbs_info = load_and_concatenate_hdfs(f"{HDFS_DIR}/sbs_info_*.hdf")
 
 # Generate plots
 print("Generating plots...")
+
 plot_mapping_vs_threshold(reads, barcodes, "peak")
 plt.gcf().savefig(f"{OUTPUT_FILES_DIR}/mapping_vs_threshold_peak.png")
 plt.close()
@@ -62,9 +63,9 @@ df_summary_one, _ = plot_cell_mapping_heatmap(
     shape="6W_sbs",
     return_summary=True,
 )
+df_summary_one.to_csv(f"{OUTPUT_FILES_DIR}/cell_mapping_heatmap_one.csv", index=False)
 plt.gcf().savefig(f"{OUTPUT_FILES_DIR}/cell_mapping_heatmap_one.png")
 plt.close()
-df_summary_one.to_csv(f"{OUTPUT_FILES_DIR}/cell_mapping_heatmap_one.csv", index=False)
 
 df_summary_any, _ = plot_cell_mapping_heatmap(
     cells,
@@ -75,9 +76,9 @@ df_summary_any, _ = plot_cell_mapping_heatmap(
     shape="6W_sbs",
     return_summary=True,
 )
+df_summary_any.to_csv(f"{OUTPUT_FILES_DIR}/cell_mapping_heatmap_any.csv", index=False)
 plt.gcf().savefig(f"{OUTPUT_FILES_DIR}/cell_mapping_heatmap_any.png")
 plt.close()
-df_summary_any.to_csv(f"{OUTPUT_FILES_DIR}/cell_mapping_heatmap_any.csv", index=False)
 
 outliers = plot_reads_per_cell_histogram(cells, x_cutoff=20)
 plt.savefig(f"{OUTPUT_FILES_DIR}/reads_per_cell_histogram.png")
