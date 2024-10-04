@@ -4,8 +4,8 @@ import pandas as pd
 from joblib import Parallel, delayed
 
 import snakemake
-import ops.firesnake
-from ops.firesnake import Snake
+import ops.ph_smk
+from ops.ph_smk import Snake_ph
 from ops.imports import *
 import ops.io
 
@@ -39,7 +39,7 @@ LUTS = [
 ]
 
 # Define the ic file pattern
-IC_PREPROCESS_PATTERN = f"20X_{WELLS}.phenotype.illumination_correction.tif"
+IC_PREPROCESS_PATTERN = "20X_{well}.phenotype.illumination_correction.tif"
 
 # Define Cellpose segmentation parameters
 DAPI_INDEX = 0
@@ -76,19 +76,23 @@ rule all:
 # Applies illumination correction
 rule apply_illumination_correction:
     input:
-        PREPROCESS_PATTERN,
-        "illumination_correction/20X_{well}.phenotype.illumination_correction.tif",
+        f"{INPUT_DIR}/ph_tifs/{PREPROCESS_PATTERN}",
+        f"{INPUT_DIR}/ph_ic_tifs/{IC_PREPROCESS_PATTERN}",
     output:
-        "process_ph/images/20X_{well}_Tile-{tile}.corrected.tif",
+        f"{IMAGES_DIR}/20X_{{well}}_Tile-{{tile}}.corrected.tif",
     run:
         print(input[0])
         print(input[1])
-        Snake.apply_illumination_correction(
+        Snake_ph.apply_illumination_correction(
             output=output, data=input[0], correction=input[1]
         )
 
 
-# # Segments cells and nuclei using pre-defined methods
+# Segments cells and nuclei using pre-defined methods
+rule segment:
+
+
+
 # rule segment:
 #     input:
 #         "process_ph/images/20X_{well}_Tile-{tile}.corrected.tif",
@@ -135,8 +139,6 @@ rule apply_illumination_correction:
 #             raise ValueError(
 #                 f"Invalid SEGMENT_METHOD: {SEGMENT_METHOD}. Choose 'cellpose', 'cell_2022', or 'cell_2019'."
 #             )
-
-
 # # Rule to extract cytoplasmic masks from segmented nuclei, cells
 # rule identify_cytoplasm:
 #     input:
@@ -155,8 +157,6 @@ rule apply_illumination_correction:
 #             raise ValueError(
 #                 f"Invalid SEGMENT_METHOD: {SEGMENT_METHOD}. Choose 'cellpose', 'cell_2022', or 'cell_2019'."
 #             )
-
-
 # # Rule to extract minimal phenotype information from segmented nuclei images
 # rule phenotype_info:
 #     input:

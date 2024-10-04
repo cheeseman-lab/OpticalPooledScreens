@@ -645,7 +645,7 @@ class Snake_ph:
             if name not in ("__doc__", "__module__") and name.startswith("_"):
                 # Add the method to the Snake class
                 Snake_ph.add_method(
-                    "Snake_sbs", name[1:], Snake_ph.call_from_snakemake(f)
+                    "Snake_ph", name[1:], Snake_ph.call_from_snakemake(f)
                 )
 
 
