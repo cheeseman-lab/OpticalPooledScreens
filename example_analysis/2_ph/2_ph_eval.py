@@ -1,7 +1,9 @@
 import os
+import glob
+
 import pandas as pd
 import matplotlib.pyplot as plt
-from glob import glob
+
 from ops.qc import *
 
 # SET PARAMETERS
@@ -52,4 +54,4 @@ print("QC analysis completed.")
 
 print("Concatenating large cp files...")
 cp_phenotype = load_and_concatenate_hdfs(f"{HDFS_DIR}/cp_phenotype_*.hdf")
-cp_phenotype.to_hdf(os.path.join(HDFS_DIR, 'output/hdfs/cp_phenotype.hdf'), key='cp_phenotype', mode='w', format='table')
+cp_phenotype.to_hdf(f"{HDFS_DIR}/cp_phenotype.hdf", key='cp_phenotype', mode='w', format='table')
