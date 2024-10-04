@@ -9,9 +9,9 @@ This workflow follows the Snakemake rule graph below:
 
 ## Contents
 
-1. `2_ph_smk_test.ipynb`: Python script for ensuring correct SBS image loading and processing at the tile level.
-2. `2_ph.smk`: Main Snakemake file that includes rules for SBS image processing, base calling, and cell assignment.
-3. `2_ph_eval.py`: Python script for evaluating SBS results and generating quality control plots.
+1. `2_ph_smk_test.ipynb`: Python script for ensuring correct phenotype image loading and processing at the tile level.
+2. `2_ph.smk`: Main Snakemake file that includes rules for phenotype image processing, cell segmentation, and feature extraction.
+3. `2_ph_eval.py`: Python script for evaluating phenotype results and generating quality control plots.
 
 
 ## Key Features
