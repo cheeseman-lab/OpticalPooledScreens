@@ -14,6 +14,7 @@ INPUT_DIR = "input"
 IMAGES_DIR = "output/images"
 CSVS_DIR = "output/csvs"
 HDFS_DIR = "output/hdfs"
+BENCHMARKS_DIR = "output/benchmarks"
 
 # Define the file pattern
 PREPROCESS_PATTERN = "20X_{well}_Tile-{tile}.phenotype.tif"
@@ -91,6 +92,14 @@ rule all:
             well=WELLS,
             tile=TILES,
         ),
+        expand(f"{HDFS_DIR}/phenotype_info_{{well}}.hdf", well=WELLS),
+        expand(
+            f"{CSVS_DIR}/20X_{{well}}_Tile-{{tile}}.cp_phenotype.csv",
+            well=WELLS,
+            tile=TILES,
+        ),
+        expand(f"{HDFS_DIR}/cp_phenotype_{{well}}.hdf", well=WELLS),
+        expand(f"{HDFS_DIR}/min_cp_phenotype_{{well}}.hdf", well=WELLS),
 
 
 # Applies illumination correction
@@ -156,72 +165,76 @@ rule phenotype_info:
         )
 
 
-# # Rule for combining phenotype info results from different wells
-# rule merge_ph_info:
-#     input:
-#         lambda wildcards: expand(
-#             f"{CSVS_DIR}/20X_{wildcards.well}_Tile-{{tile}}.phenotype_info.csv",
-#             tile=TILES,
-#         ),
-#     output:
-#         f"{HDFS_DIR}/phenotype_info_{{well}}.hdf",
-#     run:
-#         arr_ph_info = Parallel(n_jobs=threads)(
-#             delayed(get_file)(file) for file in input
-#         )
-#         df_ph_info = pd.concat(arr_ph_info)
-#         df_ph_info.to_hdf(output[0], "x", mode="w")
-# # Rule to extract full phenotype information using CellProfiler from phenotype images
-# rule extract_phenotype_cp:
-#     input:
-#         f"{IMAGES_DIR}/20X_{{well}}_Tile-{{tile}}.corrected.tif",
-#         f"{IMAGES_DIR}/20X_{{well}}_Tile-{{tile}}.nuclei.tif",
-#         f"{IMAGES_DIR}/20X_{{well}}_Tile-{{tile}}.cells.tif",
-#         f"{IMAGES_DIR}/20X_{{well}}_Tile-{{tile}}.cytoplasms.tif",
-#     output:
-#         f"{CSVS_DIR}/20X_{{well}}_Tile-{{tile}}.cp_phenotype.csv",
-#     benchmark:
-#         "process_ph/benchmark/20X_{well}_Tile-{tile}.benchmark_cp_phenotype.tsv"
-#     run:
-#         Snake.extract_phenotype_cp_multichannel(
-#             data_phenotype=input[0],
-#             nuclei=input[1],
-#             cells=input[2],
-#             cytoplasms=input[3],
-#             foci_channel=FOCI_CHANNEL,
-#             channel_names=CHANNEL_NAMES,
-#             wildcards=wildcards,
-#             output=output,
-#         )
-# # Rule for combining phenotype results from different wells
-# rule merge_ph_cp:
-#     input:
-#         lambda wildcards: expand(
-#             f"{CSVS_DIR}/20X_{wildcards.well}_Tile-{{tile}}.cp_phenotype.csv",
-#             tile=TILES,
-#         ),
-#     output:
-#         f"{HDFS_DIR}/cp_phenotype_{{well}}.hdf",
-#         f"{HDFS_DIR}/min_cp_phenotype_{{well}}.hdf",
-#     run:
-#         arr_ph_cp = Parallel(n_jobs=threads)(delayed(get_file)(file) for file in input)
-#         df_ph_cp = pd.concat(arr_ph_cp)
-#         df_ph_cp.to_hdf(output[0], "x", mode="w")
-#         df_min_ph_cp = df_ph_cp[
-#             [
-#                 "well",
-#                 "tile",
-#                 "label",
-#                 "cell_i",
-#                 "cell_j",
-#                 "cell_bounds_0",
-#                 "cell_bounds_1",
-#                 "cell_bounds_2",
-#                 "cell_bounds_3",
-#                 "cell_dapi_min",
-#                 "cell_cenpa_min",
-#                 "cell_coxiv_min",
-#                 "cell_wga_min",
-#             ]
-#         ]
-#         df_min_ph_cp.to_hdf(output[1], "x", mode="w")
+# Rule for combining phenotype info results from different wells
+rule merge_ph_info:
+    input:
+        lambda wildcards: expand(
+            f"{CSVS_DIR}/20X_{wildcards.well}_Tile-{{tile}}.phenotype_info.csv",
+            tile=TILES,
+        ),
+    output:
+        f"{HDFS_DIR}/phenotype_info_{{well}}.hdf",
+    run:
+        arr_ph_info = Parallel(n_jobs=threads)(
+            delayed(get_file)(file) for file in input
+        )
+        df_ph_info = pd.concat(arr_ph_info)
+        df_ph_info.to_hdf(output[0], "x", mode="w")
+
+
+# Rule to extract full phenotype information using CellProfiler from phenotype images
+rule extract_phenotype_cp:
+    input:
+        f"{IMAGES_DIR}/20X_{{well}}_Tile-{{tile}}.corrected.tif",
+        f"{IMAGES_DIR}/20X_{{well}}_Tile-{{tile}}.nuclei.tif",
+        f"{IMAGES_DIR}/20X_{{well}}_Tile-{{tile}}.cells.tif",
+        f"{IMAGES_DIR}/20X_{{well}}_Tile-{{tile}}.cytoplasms.tif",
+    output:
+        f"{CSVS_DIR}/20X_{{well}}_Tile-{{tile}}.cp_phenotype.csv",
+    benchmark:
+        f"{BENCHMARKS_DIR}/20X_{{well}}_Tile-{{tile}}.benchmark_cp_phenotype.tsv"
+    run:
+        Snake_ph.extract_phenotype_cp_multichannel(
+            data_phenotype=input[0],
+            nuclei=input[1],
+            cells=input[2],
+            cytoplasms=input[3],
+            foci_channel=FOCI_CHANNEL,
+            channel_names=CHANNEL_NAMES,
+            wildcards=wildcards,
+            output=output,
+        )
+
+
+# Rule for combining phenotype results from different wells
+rule merge_ph_cp:
+    input:
+        lambda wildcards: expand(
+            f"{CSVS_DIR}/20X_{wildcards.well}_Tile-{{tile}}.cp_phenotype.csv",
+            tile=TILES,
+        ),
+    output:
+        f"{HDFS_DIR}/cp_phenotype_{{well}}.hdf",
+        f"{HDFS_DIR}/min_cp_phenotype_{{well}}.hdf",
+    run:
+        arr_ph_cp = Parallel(n_jobs=threads)(delayed(get_file)(file) for file in input)
+        df_ph_cp = pd.concat(arr_ph_cp)
+        df_ph_cp.to_hdf(output[0], "x", mode="w")
+        df_min_ph_cp = df_ph_cp[
+            [
+                "well",
+                "tile",
+                "label",
+                "cell_i",
+                "cell_j",
+                "cell_bounds_0",
+                "cell_bounds_1",
+                "cell_bounds_2",
+                "cell_bounds_3",
+                "cell_dapi_min",
+                "cell_cenpa_min",
+                "cell_coxiv_min",
+                "cell_wga_min",
+            ]
+        ]
+        df_min_ph_cp.to_hdf(output[1], "x", mode="w")
