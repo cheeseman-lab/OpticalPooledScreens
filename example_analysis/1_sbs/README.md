@@ -1,4 +1,4 @@
-# sbs_1
+# 1_sbs
 
 This module provides a workflow for processing Sequencing By Synthesis (SBS) microscopy files, generating metadata, and performing read calling and cell assignment.
 It is designed to handle SBS acquisitions and integrate with the previous preprocessing step.
@@ -35,8 +35,6 @@ Run the `1_sbs_smk_test.ipynb` notebook to ensure that the parameters perform as
 
 
 ### 2. Run SBS processing workflow
-
-The SBS processing workflow has the following rulegraph:
 
 Adjust each parameter in `sbs_1.smk` to have the same values set in `1_sbs_smk_test.ipynb`.
 We use the following commands to generate the rulegraph (above) and run the workflow.
