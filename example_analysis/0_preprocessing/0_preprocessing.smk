@@ -43,7 +43,10 @@ rule all:
             well=WELLS,
             cycle=SBS_CYCLES,
         ),
-        #expand("metadata/20X_{well}.metadata.pkl", well=WELLS),
+        expand(
+            f"{METDATA_DIR}/20X_{{well}}.metadata.pkl",
+            well=WELLS,
+        ),
         # expand(
         #     "input_sbs_tif/10X_c{cycle}-SBS-{cycle}_{well}_Tile-{tile}.sbs.tif",
         #     well=WELLS,
@@ -88,24 +91,23 @@ rule extract_metadata_sbs:
 
 
 # Extract metadata for PH images
-# rule extract_metadata_ph:
-#     input:
-#         lambda wildcards: glob.glob(
-#             PH_INPUT_PATTERN_METADATA.format(well=wildcards.well)
-#         ),
-#     output:
-#         "metadata/20X_{well}.metadata.pkl",
-#     resources:
-#         mem_mb=96000,
-#     run:
-#         os.makedirs("metadata", exist_ok=True)
-#         metadata = Snake_preprocessing.extract_metadata_tile(
-#             output=output[0],
-#             files=input,
-#             parse_function_home=parse_function_home,
-#             parse_function_dataset=parse_function_dataset,
-#             parse_function_tiles=True,
-#         )
+rule extract_metadata_ph:
+    input:
+        lambda wildcards: glob.glob(
+            PH_INPUT_PATTERN_METADATA.format(well=wildcards.well)
+        ),
+    output:
+        f"{METDATA_DIR}/20X_{{well}}.metadata.pkl",
+    run:
+        metadata = Snake_preprocessing.extract_metadata_tile(
+            files=input,
+            parse_function_home=PARSE_FUNCTION_HOME,
+            parse_function_dataset=PARSE_FUNCTION_DATASET,
+            parse_function_tiles=True,
+            output=output,
+        )
+
+
 # # Convert SBS ND2 files to TIFF
 # rule convert_sbs:
 #     input:
