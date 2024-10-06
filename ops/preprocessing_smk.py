@@ -1,11 +1,12 @@
 import inspect
 import functools
 import os
-import warnings
+import re
+
 import pandas as pd
 import numpy as np
-import re
 from nd2reader import ND2Reader
+
 import ops.filenames
 
 class Snake_preprocessing:
@@ -710,7 +711,7 @@ def get_arg_names(f):
     Returns:
         list: List of argument names.
     """
-    argspec = inspect.getargspec(f)
+    argspec = inspect.getfullargspec(f)
     if argspec.defaults is None:
         return argspec.args
     n = len(argspec.defaults)
@@ -726,7 +727,7 @@ def get_kwarg_defaults(f):
     Returns:
         dict: Dictionary containing keyword arguments and their defaults.
     """
-    argspec = inspect.getargspec(f)
+    argspec = inspect.getfullargspec(f)
     if argspec.defaults is None:
         defaults = {}
     else:

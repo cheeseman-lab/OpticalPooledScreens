@@ -35,17 +35,17 @@ Run the `0_preprocessing_smk_test.ipynb` notebook to ensure that the parameters 
 
 ### 2. Run phenotype processing workflow
 
-Adjust each parameter in `2_ph.smk` to have the same values set in `0_preprocessing_smk_test.ipynb`.
+Adjust each parameter in `0_preprocessing.smk` to have the same values set in `0_preprocessing_smk_test.ipynb`.
 We use the following commands to generate the rulegraph (above) and run the workflow.
 ```sh
 # activate conda environment
 conda activate ops_dev
 
 # generate rulegraph
-snakemake --snakefile 2_ph.smk --rulegraph | dot -Gdpi=100 -Tpng -o 2_ph_rulegraph.png
+snakemake --snakefile 0_preprocessing.smk --rulegraph | dot -Gdpi=100 -Tpng -o 0_preprocessing_rulegraph.png
 
 # run workflow
-snakemake --snakefile 2_ph.smk
+snakemake --snakefile 0_preprocessing.smk
 ```
 
 ### 3. Evaluate results
