@@ -60,11 +60,12 @@ rule all:
             well=WELLS,
             tile=PH_TILES,
         ),
-        # expand(
-        #     "illumination_correction/10X_c{cycle}-SBS-{cycle}_{well}.sbs.illumination_correction.tif",
-        #     cycle=SBS_CYCLES,
-        #     well=WELLS,
-        # ),
+        expand(
+            f"{IC_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}_Tile-{{tile}}.sbs.illumination_correction.tif",
+            well=WELLS,
+            cycle=SBS_CYCLES,
+            tile=SBS_TILES,
+        ),
         # expand(
         #     "illumination_correction/20X_{well}.phenotype.illumination_correction.tif",
         #     well=WELLS,
@@ -153,24 +154,23 @@ rule convert_ph:
         save(output[0], image_array)
 
 
-# # Calculate illumination correction for sbs files
-# rule calculate_icf_sbs:
-#     input:
-#         lambda wildcards: expand(
-#             "input_sbs_tif/10X_c{cycle}-SBS-{cycle}_{well}_Tile-{tile}.sbs.tif",
-#             cycle=wildcards.cycle,
-#             well=wildcards.well,
-#             tile=SBS_TILES,
-#         ),
-#     output:
-#         "illumination_correction/10X_c{cycle}-SBS-{cycle}_{well}.sbs.illumination_correction.tif",
-#     resources:
-#         mem_mb=96000,
-#     run:
-#         os.makedirs("illumination_correction", exist_ok=True)
-#         input_files = list(input)
-#         icf = calculate_illumination_correction(input_files, threading=-3)
-#         save(output[0], icf)
+# Calculate illumination correction for sbs files
+rule calculate_icf_sbs:
+    input:
+        lambda wildcards: expand(
+            f"{SBS_TIF_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}_Tile-{{tile}}.sbs.tif",
+            cycle=wildcards.cycle,
+            well=wildcards.well,
+            tile=wildcards.tile,
+        ),
+    output:
+        f"{IC_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}_Tile-{{tile}}.sbs.illumination_correction.tif",
+    run:
+        input_files = list(input)
+        icf = calculate_illumination_correction(input_files, threading=-3)
+        save(output[0], icf)
+
+
 # # Calculate illumination correction for ph files
 # rule calculate_icf_ph:
 #     input:
