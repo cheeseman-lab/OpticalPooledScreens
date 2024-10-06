@@ -7,6 +7,10 @@ from ops.preprocessing_smk import *
 from ops.process import calculate_illumination_correction
 from ops.io import save_stack as save
 
+# Directory for loading and saving files
+METDATA_DIR = "output/metadata"
+IC_DIR = "output/illumination_correction"
+
 # Define wells to preprocess
 WELLS = ["A1", "A2"]
 
@@ -35,11 +39,11 @@ PH_INPUT_PATTERN = "input/ph/*Wells-{well}_Points-{tile:0>3}__Channel*.nd2"
 rule all:
     input:
         expand(
-            "metadata/10X_c{cycle}-SBS-{cycle}_{well}.metadata.pkl",
+            f"{METDATA_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}.metadata.pkl",
             well=WELLS,
             cycle=SBS_CYCLES,
         ),
-        # expand("metadata/20X_{well}.metadata.pkl", well=WELLS),
+        #expand("metadata/20X_{well}.metadata.pkl", well=WELLS),
         # expand(
         #     "input_sbs_tif/10X_c{cycle}-SBS-{cycle}_{well}_Tile-{tile}.sbs.tif",
         #     well=WELLS,
@@ -71,7 +75,7 @@ rule extract_metadata_sbs:
             )
         ),
     output:
-        "metadata/10X_c{cycle}-SBS-{cycle}_{well}.metadata.pkl",
+        f"{METDATA_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}.metadata.pkl",
     run:
         os.makedirs("metadata", exist_ok=True)
         metadata = Snake_preprocessing.extract_metadata_tile(
@@ -79,11 +83,11 @@ rule extract_metadata_sbs:
             parse_function_home=PARSE_FUNCTION_HOME,
             parse_function_dataset=PARSE_FUNCTION_DATASET,
             parse_function_tiles=True,
-            output=output[0],
+            output=output,
         )
 
 
-# # Extract metadata for PH images
+# Extract metadata for PH images
 # rule extract_metadata_ph:
 #     input:
 #         lambda wildcards: glob.glob(
@@ -102,8 +106,6 @@ rule extract_metadata_sbs:
 #             parse_function_dataset=parse_function_dataset,
 #             parse_function_tiles=True,
 #         )
-
-
 # # Convert SBS ND2 files to TIFF
 # rule convert_sbs:
 #     input:
@@ -125,8 +127,6 @@ rule extract_metadata_sbs:
 #         output_filename = ops.filenames.name_file(fov_description)
 #         print(output_filename)
 #         save(output_filename, image_array)
-
-
 # # Convert PH ND2 files to TIFF
 # rule convert_ph:
 #     input:
