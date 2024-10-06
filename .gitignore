@@ -14,7 +14,8 @@ venv_ops_new/
 
 # Example files that are too large for GitHub
 example_analysis/0_preprocessing/input/ph
-example_analysis/*/output/*/*.tif
+example_analysis/1_sbs/output/*/*.tif
+example_analysis/2_ph/output/*/*.tif
 
 # Snakemake process files
 example_analysis/*/.snakemake/
