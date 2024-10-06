@@ -9,6 +9,8 @@ from ops.io import save_stack as save
 
 # Directory for loading and saving files
 METDATA_DIR = "output/metadata"
+SBS_TIF_DIR = "output/sbs_tif"
+PH_TIF_DIR = "output/ph_tif"
 IC_DIR = "output/illumination_correction"
 
 # Define wells to preprocess
@@ -47,17 +49,17 @@ rule all:
             f"{METDATA_DIR}/20X_{{well}}.metadata.pkl",
             well=WELLS,
         ),
-        # expand(
-        #     "input_sbs_tif/10X_c{cycle}-SBS-{cycle}_{well}_Tile-{tile}.sbs.tif",
-        #     well=WELLS,
-        #     cycle=SBS_CYCLES,
-        #     tile=SBS_TILES,
-        # ),
-        # expand(
-        #     "input_ph_tif/20X_{well}_Tile-{tile}.phenotype.tif",
-        #     well=WELLS,
-        #     tile=PH_TILES,
-        # ),
+        expand(
+            f"{SBS_TIF_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}_Tile-{{tile}}.sbs.tif",
+            well=WELLS,
+            cycle=SBS_CYCLES,
+            tile=SBS_TILES,
+        ),
+        expand(
+            f"{PH_TIF_DIR}/20X_{{well}}_Tile-{{tile}}.phenotype.tif",
+            well=WELLS,
+            tile=PH_TILES,
+        ),
         # expand(
         #     "illumination_correction/10X_c{cycle}-SBS-{cycle}_{well}.sbs.illumination_correction.tif",
         #     cycle=SBS_CYCLES,
@@ -108,48 +110,49 @@ rule extract_metadata_ph:
         )
 
 
-# # Convert SBS ND2 files to TIFF
-# rule convert_sbs:
-#     input:
-#         lambda wildcards: glob.glob(
-#             SBS_INPUT_PATTERN.format(
-#                 cycle=wildcards.cycle, well=wildcards.well
-#             ).format(tile=f"{int(wildcards.tile):03d}")
-#         ),
-#     output:
-#         "input_sbs_tif/10X_c{cycle}-SBS-{cycle}_{well}_Tile-{tile}.sbs.tif",
-#     run:
-#         os.makedirs("input_sbs_tif", exist_ok=True)
-#         image_array, fov_description = Snake_preprocessing.convert_to_tif_tile(
-#             file=input[0],
-#             parse_function_home=parse_function_home,
-#             parse_function_dataset=parse_function_dataset,
-#             channel_order_flip=True,
-#         )
-#         output_filename = ops.filenames.name_file(fov_description)
-#         print(output_filename)
-#         save(output_filename, image_array)
-# # Convert PH ND2 files to TIFF
-# rule convert_ph:
-#     input:
-#         lambda wildcards: glob.glob(
-#             PH_INPUT_PATTERN.format(well=wildcards.well).format(
-#                 tile=f"{int(wildcards.tile):03d}"
-#             )
-#         ),
-#     output:
-#         "input_ph_tif/20X_{well}_Tile-{tile}.phenotype.tif",
-#     run:
-#         os.makedirs("input_ph_tif", exist_ok=True)
-#         image_array, fov_description = Snake_preprocessing.convert_to_tif_tile(
-#             file=input[0],
-#             parse_function_home=parse_function_home,
-#             parse_function_dataset=parse_function_dataset,
-#             channel_order_flip=True,
-#         )
-#         output_filename = ops.filenames.name_file(fov_description)
-#         print(output_filename)
-#         save(output_filename, image_array)
+# Convert SBS ND2 files to TIFF
+rule convert_sbs:
+    input:
+        lambda wildcards: glob.glob(
+            SBS_INPUT_PATTERN.format(
+                cycle=wildcards.cycle,
+                well=wildcards.well,
+                tile=f"{int(wildcards.tile):03d}",
+            )
+        ),
+    output:
+        f"{SBS_TIF_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}_Tile-{{tile}}.sbs.tif",
+    run:
+        image_array, fov_description = Snake_preprocessing.convert_to_tif_tile(
+            file=input[0],
+            parse_function_home=PARSE_FUNCTION_HOME,
+            parse_function_dataset=PARSE_FUNCTION_DATASET,
+            channel_order_flip=True,
+        )
+        save(output[0], image_array)
+
+
+# Convert PH ND2 files to TIFF
+rule convert_ph:
+    input:
+        lambda wildcards: glob.glob(
+            PH_INPUT_PATTERN.format(
+                well=wildcards.well,
+                tile=f"{int(wildcards.tile):03d}",
+            )
+        ),
+    output:
+        f"{PH_TIF_DIR}/20X_{{well}}_Tile-{{tile}}.phenotype.tif",
+    run:
+        image_array, fov_description = Snake_preprocessing.convert_to_tif_tile(
+            file=input[0],
+            parse_function_home=PARSE_FUNCTION_HOME,
+            parse_function_dataset=PARSE_FUNCTION_DATASET,
+            channel_order_flip=True,
+        )
+        save(output[0], image_array)
+
+
 # # Calculate illumination correction for sbs files
 # rule calculate_icf_sbs:
 #     input:
