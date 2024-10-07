@@ -803,6 +803,38 @@ def applyIJ(f, arr, *args, **kwargs):
     # Reshape the resulting list of arrays to the determined output shape
     return np.array(arr_).reshape(output_shape)
 
+def applyIJ_parallel(f, arr, n_jobs=-2, backend='threading', tqdm=False, *args, **kwargs):
+    """
+    Decorator to apply a function that expects 2D input to the trailing two dimensions of an array,
+    parallelizing computation across 2D frames.
+
+    Parameters:
+        f (function): The function to be decorated and applied in parallel.
+        arr (numpy.ndarray): The input array to apply the function to.
+        n_jobs (int): The number of jobs to run in parallel. Default is -2.
+        backend (str): The parallelization backend to use. Default is 'threading'.
+        tqdm (bool): Whether to use tqdm for progress tracking. Default is False.
+        *args: Additional positional arguments to be passed to the function.
+        **kwargs: Additional keyword arguments to be passed to the function.
+
+    Returns:
+        numpy.ndarray: Output array after applying the function in parallel.
+    """
+    from joblib import Parallel, delayed
+
+    h, w = arr.shape[-2:]
+    reshaped = arr.reshape((-1, h, w))
+
+    if tqdm:
+        from tqdm import tqdm_notebook as tqdn
+        work = tqdn(reshaped,'frame')
+    else:
+        work = reshaped
+
+    arr_ = Parallel(n_jobs=n_jobs,backend=backend)(delayed(f)(frame, *args, **kwargs) for frame in work)
+
+    output_shape = arr.shape[:-2] + arr_[0].shape
+    return np.array(arr_).reshape(output_shape)
 
 def inscribe(mask):
     """
@@ -911,35 +943,77 @@ def offset(stack, offsets):
 
 def join_stacks(*args):
     """
-    Join multiple arrays along specified dimensions.
+    Join multiple array stacks along specified dimensions.
 
-    Args:
-        *args: Tuples of (array, code), where code specifies how to join.
-               Code can contain 'a' (append), 'r' (repeat), or '.' (do nothing).
+    Parameters:
+        *args: Variable number of arrays or tuples of (array, code).
+               If a tuple, the code specifies how to join the array:
+               'a' for append, 'r' for repeat, '.' for normal axis.
 
     Returns:
-        np.ndarray: Joined array.
-
-    Notes:
-        - Arrays are expanded to match the highest dimensionality.
-        - If no codes are provided, arrays are appended along a new leading dimension.
+        numpy.ndarray: Joined array with dimensions determined by input arrays and codes.
     """
-    # Helper functions (with_default, expand_dims, expand_code, validate_code, 
-    # mark_all_appends, special_case_no_ops) are defined here...
+    def with_default(arg):
+        """Convert single array argument to (array, code) tuple with empty code."""
+        try:
+            arr, code = arg
+            return arr, code
+        except ValueError:
+            return arg, ''
 
-    # Process input arguments
+    def expand_dims(arr, n):
+        """Expand array dimensions to match the target number of dimensions."""
+        if arr.ndim < n:
+            return expand_dims(arr[None], n)
+        return arr
+
+    def expand_code(arr, code):
+        """Extend code with dots to match array dimensions."""
+        return code + '.' * (arr.ndim - len(code))
+
+    def validate_code(arr, code):
+        """Check if the code is valid for the given array."""
+        if code.count('a') > 1:
+            raise ValueError('cannot append same array along multiple dimensions')
+        if len(code) > arr.ndim:
+            raise ValueError('length of code greater than number of dimensions')
+
+    def mark_all_appends(codes):
+        """Ensure consistency in append operations across all arrays."""
+        arr = []
+        for pos in zip(*codes):
+            if 'a' in pos:
+                if 'r' in pos:
+                    raise ValueError('cannot repeat and append along the same axis')
+                pos = 'a' * len(pos)
+            arr += [pos]
+        return [''.join(code) for code in zip(*arr)]
+
+    def special_case_no_ops(args):
+        if all([c == '.' for _, code in args for c in code]):
+            return [(arr[None], 'a' + code) for arr, code in args]
+        return args
+    
+    # insert default code (only dots)
     args = [with_default(arg) for arg in args]
+    # expand the dimensions of the input arrays
     output_ndim = max(arr.ndim for arr, _ in args)
     args = [(expand_dims(arr, output_ndim), code) for arr, code in args]
+    # add trailing dots to codes
     args = [(arr, expand_code(arr, code)) for arr, code in args]
+    # if no codes are provided, interpret as appending along a new dimension
     args = special_case_no_ops(args)
+    # recalculate due to special case
     output_ndim = max(arr.ndim for arr, _ in args)
     
     [validate_code(arr, code) for arr, code in args]
+    # if any array is appended along an axis, every array must be
+    # input codes are converted from dot to append for those axes
     codes = mark_all_appends([code for _, code in args])
     args = [(arr, code) for (arr, _), code in zip(args, codes)]
 
-    # Calculate output shape and dtype
+    # calculate shape for output array
+    # uses numpy addition rule to determine output dtype
     output_dtype = sum([arr.flat[:1] for arr, _ in args]).dtype
     output_shape = [0] * output_ndim
     for arr, code in args:
@@ -960,7 +1034,8 @@ def join_stacks(*args):
     
     output = np.zeros(output_shape, dtype=output_dtype)
     
-    # Assign values from input arrays to output
+    # assign from input arrays to output 
+    # (values automatically coerced to most general numeric type)
     slices_so_far = [0] * output_ndim
     for arr, code in args:
         slices = []
@@ -975,6 +1050,42 @@ def join_stacks(*args):
         output[tuple(slices)] = arr
         
     return output
+
+def max_project_zstack(stack, slices=5):
+    """
+    Condense z-stack into a single slice using maximum projection through all slices for each channel.
+
+    Parameters:
+        stack (numpy.ndarray): Input z-stack array.
+        slices (int or list): Number of slices for each channel. If int, same for all channels.
+
+    Returns:
+        numpy.ndarray: Maximum projected array with dimensions (channels, height, width).
+    """
+    if isinstance(slices,list):
+        channels = len(slices)
+
+        maxed = []
+        end_ch_slice = 0
+        for ch in range(len(slices)):
+            end_ch_slice += slices[ch]
+            ch_slices = stack[(end_ch_slice-slices[ch]):(end_ch_slice)]
+            ch_maxed = np.amax(ch_slices,axis=0)
+            maxed.append(ch_maxed)
+
+    else:
+        channels = int(stack.shape[-3]/slices)
+        assert len(stack) == int(slices)*channels, 'Input data must have leading dimension length slices*channels'
+
+        maxed = []
+        for ch in range(channels):
+            ch_slices = stack[(ch*slices):((ch+1)*slices)]
+            ch_maxed = np.amax(ch_slices,axis=0)
+            maxed.append(ch_maxed)
+
+    maxed = np.array(maxed)
+
+    return maxed
 
 # SCIKIT-IMAGE
 
