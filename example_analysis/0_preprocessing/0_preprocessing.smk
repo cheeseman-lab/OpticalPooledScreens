@@ -8,7 +8,7 @@ from ops.process import calculate_illumination_correction
 from ops.io import save_stack as save
 
 # Directory for loading and saving files
-METDATA_DIR = "output/metadata"
+METADATA_DIR = "output/metadata"
 SBS_TIF_DIR = "output/sbs_tif"
 PH_TIF_DIR = "output/ph_tif"
 IC_DIR = "output/illumination_correction"
@@ -41,12 +41,12 @@ PH_INPUT_PATTERN = "input/ph/*Wells-{well}_Points-{tile:0>3}__Channel*.nd2"
 rule all:
     input:
         expand(
-            f"{METDATA_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}.metadata.pkl",
+            f"{METADATA_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}.metadata.pkl",
             well=WELLS,
             cycle=SBS_CYCLES,
         ),
         expand(
-            f"{METDATA_DIR}/20X_{{well}}.metadata.pkl",
+            f"{METADATA_DIR}/20X_{{well}}.metadata.pkl",
             well=WELLS,
         ),
         expand(
@@ -82,7 +82,7 @@ rule extract_metadata_sbs:
             )
         ),
     output:
-        f"{METDATA_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}.metadata.pkl",
+        f"{METADATA_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}.metadata.pkl",
     run:
         os.makedirs("metadata", exist_ok=True)
         metadata = Snake_preprocessing.extract_metadata_tile(
@@ -101,7 +101,7 @@ rule extract_metadata_ph:
             PH_INPUT_PATTERN_METADATA.format(well=wildcards.well)
         ),
     output:
-        f"{METDATA_DIR}/20X_{{well}}.metadata.pkl",
+        f"{METADATA_DIR}/20X_{{well}}.metadata.pkl",
     run:
         metadata = Snake_preprocessing.extract_metadata_tile(
             files=input,
