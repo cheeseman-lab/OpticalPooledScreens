@@ -66,11 +66,11 @@ rule all:
             cycle=SBS_CYCLES,
             tile=SBS_TILES,
         ),
-        # expand(
-        #     f"{IC_DIR}/20X_{{well}}_Tile-{{tile}}.phenotype.illumination_correction.tif",
-        #     well=WELLS,
-        #     tile=PH_TILES,
-        # ),
+        expand(
+            f"{IC_DIR}/20X_{{well}}.phenotype.illumination_correction.tif",
+            well=WELLS,
+            tile=PH_TILES,
+        ),
 
 
 # Extract metadata for SBS images
@@ -172,21 +172,18 @@ rule calculate_icf_sbs:
         save(output[0], icf)
 
 
-# # Calculate illumination correction for ph files
-# rule calculate_icf_ph:
-#     input:
-#         lambda wildcards: expand(
-#             "input_ph_tif/20X_{well}_Tile-{tile}.phenotype.Channel-{{channel}}.tif",
-#             well=wildcards.well,
-#             channel=wildcards.channel,
-#             tile=PH_TILES,
-#         ),
-#     output:
-#         "illumination_correction/20X_{well}.phenotype.Channel-{channel}.illumination_correction.tif",
-#     resources:
-#         mem_mb=96000,
-#     run:
-#         os.makedirs("illumination_correction", exist_ok=True)
-#         input_files = list(input)
-#         icf = calculate_illumination_correction(input_files, threading=-3)
-#         save(output[0], icf)
+# Calculate illumination correction for ph files
+rule calculate_icf_ph:
+    input:
+        lambda wildcards: expand(
+            f"{PH_TIF_DIR}/20X_{{well}}_Tile-{{tile}}.phenotype.tif",
+            well=wildcards.well,
+            tile=PH_TILES,
+        ),
+    output:
+        f"{IC_DIR}/20X_{{well}}.phenotype.illumination_correction.tif",
+    run:
+        os.makedirs("illumination_correction", exist_ok=True)
+        input_files = list(input)
+        icf = calculate_illumination_correction(input_files, threading=-3)
+        save(output[0], icf)
