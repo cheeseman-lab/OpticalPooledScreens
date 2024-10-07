@@ -61,14 +61,15 @@ rule all:
             tile=PH_TILES,
         ),
         expand(
-            f"{IC_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}_Tile-{{tile}}.sbs.illumination_correction.tif",
+            f"{IC_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}.sbs.illumination_correction.tif",
             well=WELLS,
             cycle=SBS_CYCLES,
             tile=SBS_TILES,
         ),
         # expand(
-        #     "illumination_correction/20X_{well}.phenotype.illumination_correction.tif",
+        #     f"{IC_DIR}/20X_{{well}}_Tile-{{tile}}.phenotype.illumination_correction.tif",
         #     well=WELLS,
+        #     tile=PH_TILES,
         # ),
 
 
@@ -161,10 +162,10 @@ rule calculate_icf_sbs:
             f"{SBS_TIF_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}_Tile-{{tile}}.sbs.tif",
             cycle=wildcards.cycle,
             well=wildcards.well,
-            tile=wildcards.tile,
+            tile=SBS_TILES,
         ),
     output:
-        f"{IC_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}_Tile-{{tile}}.sbs.illumination_correction.tif",
+        f"{IC_DIR}/10X_c{{cycle}}-SBS-{{cycle}}_{{well}}.sbs.illumination_correction.tif",
     run:
         input_files = list(input)
         icf = calculate_illumination_correction(input_files, threading=-3)
