@@ -83,4 +83,4 @@ output/
 ## Notes
 
 While processing current has tile-based (multichannel) and well-based (single or multichannel) formats, we provide example analysis for only the tile-based format.
-These workflows differ largely only their alignment and image correction step.
+These workflows differ largely only in their alignment and image correction step.
