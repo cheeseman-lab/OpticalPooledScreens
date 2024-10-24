@@ -750,23 +750,24 @@ def multistep_alignment(df_0, df_1, df_info_0, df_info_1,
         d_0 = dict(list(df_0.groupby('tile')))
         d_1 = dict(list(df_1.groupby('site')))
         for ix_0, ix_1 in candidates[:batch_size]:
-            try:
-                tile_df = d_0[ix_0]
-                site_df = d_1[ix_1]
-                work.append([tile_df, site_df])
-            except KeyError as e:
-                print(f"KeyError: {e}. One of the keys ({ix_0}, {ix_1}) not found in dictionaries.")
+            if ix_0 in d_0 and ix_1 in d_1:  # Only process if both keys exist
+                work.append([d_0[ix_0], d_1[ix_1]])
+            else:
+                print(f"Skipping tile {ix_0}, site {ix_1} - not found in data")
 
-        # Execute parallel processing to evaluate matches
+        if not work:  # If no valid pairs found, end alignment
+            print("No valid pairs to process")
+            break
+
+        # Perform parallel processing of work
         df_align_new = (pd.concat(parallel_process(work_on, work, n_jobs=n_jobs, tqdn=tqdn), axis=1).T
-                        .assign(tile=[t for t, _ in candidates[:batch_size]], 
-                                site=[s for _, s in candidates[:batch_size]])
+                        .assign(tile=[t for t, _ in candidates[:len(work)]], 
+                                site=[s for _, s in candidates[:len(work)]])
                         )
 
-        # Add new alignments to the list
+        # Append new alignments to the list
         alignments += [df_align_new]
 
-        # Break the loop if no new matches are found
         if len(df_align_new.query(gate)) == 0:
             break
             
