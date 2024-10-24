@@ -1,26 +1,27 @@
 # merge_3
 
-This module provides a workflow for processing phenotype microscopy files, performing cell segmentation, and extracting phenotypic features. It is designed to handle phenotype acquisitions and integrate with the previous preprocessing step.
+This module provides a workflow for aligning and merging phenotype microscopy data with sequencing-by-synthesis (SBS) data. It uses triangle hashing algorithms for robust point matching between different imaging modalities.
 
 ## Contents
 
-1. `ph_2_smk_test.ipynb`: Python script for ensuring correct PH image loading and processing at the tile level.
-2. `ph_2.sh`: Bash script to execute the Snakemake workflow.
-3. `ph_2.smk`: Main Snakemake file that includes rules for phenotype image processing, cell segmentation, and feature extraction.
-4. `ph_2_eval.py`: Python script for evaluating phenotype results and generating quality control plots.
+1. `merge_3_smk_test.ipynb`: Jupyter notebook for testing alignment parameters and visualizing results
+2. `merge_3.smk`: Main Snakemake file for merging aligned phenotype and SBS data
+3. `hash_3.smk`: Snakemake file for generating hash alignments
+4. `merge_3.sh`: Bash script to execute the complete workflow
+5. `merge_3_eval.py`: Python script for collating alignment and phenotype data, filtering, and generating quality control plots.
 
 ## Usage
 
 1. Test input patterns and processing:
-   - Run `ph_2_smk_test.ipynb` to ensure PH images are loaded and processed correctly.
-   - Modify the input patterns, channels, and other parameters as needed for your specific setup.
+   - Run `merge_3_smk_test.ipynb` to visualize alignment quality, test matching parameters, and verify initial site selection.
+   - Modify the input patterns, filtering criteria, and other parameters as needed for your specific setup.
 
 2. Run phenotype processing workflow:
-   - Adjust the parameters in `ph_2.smk` based on your specific setup and requirements.
-   - Execute `ph_2.sh` to run the Snakemake workflow.
+   - Adjust the parameters in `hash_3.smk` and `merge_3.smk` based on your specific setup and requirements.
+   - Execute `merge_3.sh` to run the Snakemake workflow of both of these files.
 
 3. Evaluate results:
-   - Run `ph_2_eval.py`, which generates quality control plots and statistics for the phenotype processing results.
+   - Run `merge_3_eval.py`, which collates the final single-cell data and generates quality control plots and statistics for the alignment results.
 
 ## Key Features
 
@@ -32,49 +33,51 @@ This module provides a workflow for processing phenotype microscopy files, perfo
 
 ## Dependencies
 
-- Python libraries: numpy, pandas, matplotlib, seaborn, tifffile
+- Python libraries: numpy, pandas, matplotlib, seaborn
 - ops package modules:
-  - ops.firesnake: For specific phenotype processing functions used in the Snakemake workflow
-      - ops.features: For feature extraction
-      - ops.morphology_features: For morphological feature calculations
-      - ops.cp_emulator: For emulating CellProfiler functionality
-      - ops.cellpose: For cell segmentation using Cellpose
-      - ops.process: For image processing operations
+  - ops.firesnake: For wrappers used in the Snakemake workflow
+      - ops.triangle_hash: For triangle-based point matching
   - ops.qc: For quality control functions
 
 ## Notes
 
-Given different formats of saving data in either a well based (single or multichannel) or tile based (multichannel) format, we provide example analysis for the two respective cases. These workflows differ largely only their alignment and image correction step.
+Given different formats of saving data in either a well based (single or multichannel) or tile based (multichannel) format, we provide example analysis for the two respective cases. For this step, there is no difference in these workflows.
 
-- Ensure all paths and parameters are correctly set in the Snakemake and Python files before running the workflow.
-- The evaluation step is crucial to confirm the quality and correctness of the phenotype processing results.
-- Before running the full workflow, it is recommended to test the pipeline on a single well or cycle using `ph_2_smk_test.ipynb`.
+- Ensure input files exist in the correct directories before running the workflow
+- The determinant range should be adjusted based on:
+  - Objective magnifications (e.g., 20X vs 10X)
+  - Camera binning settings
+  - Expected variation in alignment
+- Initial sites should be carefully chosen to represent well-distributed points across the imaging area
+- Before running the full workflow, it is recommended to test the pipeline on these initial alignments using `merge_3_smk_test.ipynb`.
 
 ## File structure for running
 
 ```
 plate/
-├── ph_2.smk
-├── input_ph_tif/
-├── ph_2/
-│   ├── ph_2_smk_test.ipynb
-│   ├── ph_2.sh
-│   ├── ph_2_eval.py
-│   ├── ph_2_eval.sh
-│   ├── csv/*
-│   ├── tif/*
+├── merge_3.smk
+├── hash_3.smk
+├── process_ph/
+│   └── tables/ 
+├── process_sbs/
+│   └── tables/ 
+└── merge_3/
+│   ├── merge_3_smk_test.ipynb
+│   ├── merge_3.sh
+│   ├── merge_3_eval.py
+│   ├── merge_3_eval.sh
 │   ├── hdf/*
-│   └── qc/*
-└── process_ph/
-    ├── images/*
-    └── tables/*
+└── alignment/*
 ```
 
 Directories marked with an asterisk contain files generated by this workflow.
 
 Note: 
-- Ensure that your input TIFF files from the preprocessing step are in the `input_ph_tif/` and `illumination_correction/` directories before running the workflow.
-- The test workflow will generate example output files for one tile in the `ph_2/csv/`, `ph_2/tif/` directories.
-- The Snakemake run will generate output files in `process_ph/images/` and `process_ph/tables/` directories.
-- The evaluation step will generate output files in `ph_2/hdf/` and `ph_2/qc/` directories.
-- Maintaining this file structure is crucial for the correct execution of the workflow. Any changes to the structure may require corresponding adjustments in the scripts.
+- Ensure that your input files from the previous processing steps are in the `process_ph/tables/` and `process_sbs/tables/` directories before running the workflow.
+- The test workflow (`merge_3_smk_test.ipynb`) will help visualize and validate alignment parameters for your initial sites.
+- The Snakemake workflows will generate:
+   - Fast alignment files in `merge_3/hdf/`
+   - Merged alignment files in `alignment/`
+   - Final merged dataset in `merge_3/hdf/`
+
+Maintaining this file structure is crucial for the correct execution of the workflow. Any changes to the structure may require corresponding adjustments in the scripts.
