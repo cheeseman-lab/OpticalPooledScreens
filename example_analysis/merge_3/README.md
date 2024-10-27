@@ -37,7 +37,7 @@ This module provides a workflow for aligning and merging phenotype microscopy da
 - ops package modules:
   - ops.firesnake: For wrappers used in the Snakemake workflow
       - ops.triangle_hash: For triangle-based point matching
-  - ops.qc: For quality control functions
+  - ops.qc and ops.merge_utils: For quality control functions and downstream processing
 
 ## Notes
 
