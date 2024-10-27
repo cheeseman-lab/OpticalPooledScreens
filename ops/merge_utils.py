@@ -1,6 +1,14 @@
 """
-Utility functions for merge analysis pipeline.
-Contains functions for FOV calculations, gene mapping, and data cleaning.
+Merge Analysis Utilities
+This module provides utility functions for analyzing and processing merged datasets
+from different imaging modalities (relating to merge -- step 3). It includes functions for:
+
+1. Spatial Analysis: Functions for calculating cell positions and distances within fields of view.
+2. Gene Mapping: Tools for identifying and validating gene mappings across datasets.
+3. Data Cleaning: Methods for deduplication and quality control of merged datasets.
+4. Visualization: Functions for plotting cell positions and channel distributions.
+5. Quality Assessment: Tools for checking matching rates and merge statistics.
+
 """
 
 import pandas as pd
