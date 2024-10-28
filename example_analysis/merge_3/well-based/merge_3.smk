@@ -11,14 +11,15 @@ det_range = (0.06, 0.065)
 score = 0.1
 threshold = 2
 
-# Construct a string representing the filtering condition
-gate = '{0} <= determinant <= {1} & score > {2}'.format(*det_range, score)
-
 # Read data from HDF file
 df_align_no_gate = pd.read_hdf('merge_3/hdf/fast_alignment_all.hdf')
 
 # Filter DataFrame based on the filtering condition
-df_align = df_align_no_gate.query(gate)
+df_align = df_align_no_gate[
+    (df_align_no_gate["determinant"] >= det_range[0]) &
+    (df_align_no_gate["determinant"] <= det_range[1]) &
+    (df_align_no_gate["score"] > score)
+]
 
 # Convert numeric columns to integers before extracting
 df_align['tile'] = df_align['tile'].astype(int)
