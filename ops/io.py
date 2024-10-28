@@ -266,7 +266,7 @@ def tile_config(df, output_filename):
 
 def grid_view(files, bounds, padding=40, with_mask=False, im_func=None, memoize=True):
     """Generates a grid view of images from given files and bounds.
-
+    
     Args:
         files (list): List of filenames to read images from.
         bounds (list): List of bounding boxes for each file.
@@ -274,22 +274,18 @@ def grid_view(files, bounds, padding=40, with_mask=False, im_func=None, memoize=
         with_mask (bool): If True, generates a mask image. Default is False.
         im_func (function): Function to apply to each image read from file. Default is None.
         memoize (bool): If True, caches file reads. Default is True.
-
     Returns:
         np.ndarray: Stacked image array.
         np.ndarray (optional): Stacked mask array if with_mask is True.
     """
     padding = int(padding)
-
     arr = []
-    Is = {}
-
+    Is = {}  # Cache for loaded images
+    
     if im_func is None:
         im_func = lambda x: x
-
-    tqdn = tqdm.notebook.tqdm
-
-    for filename, bounds_ in tqdn(zip(files, bounds)):
+        
+    for filename, bounds_ in zip(files, bounds):
         if filename.endswith('hdf'):
             bounds_ = np.array(bounds_) + np.array((-padding, -padding, padding, padding))
             I_cell = im_func(read_hdf_image(filename, bbox=bounds_, memoize=memoize))
@@ -309,7 +305,7 @@ def grid_view(files, bounds, padding=40, with_mask=False, im_func=None, memoize=
             img = np.zeros(shape, dtype=np.uint16) + i + 1
             arr_m.append(img)
         return ops.utils.pile(arr), ops.utils.pile(arr_m)
-
+        
     return ops.utils.pile(arr)
 
 def grid_view_timelapse(filename, frames, bounds, xy_shape=(80, 80), memoize=False):

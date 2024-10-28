@@ -8,46 +8,75 @@ across different granularities (relating to aggregate -- step 4). It includes fu
 3. Population Analysis: Methods for identifying and separating cell populations (e.g., mitotic vs interphase).
 4. Data Aggregation: Tools for collapsing data from cell-level to sgRNA and gene-level summaries.
 5. Quality Control: Functions for parameter suggestion and visualization of distributions.
-"""
 
+"""
 
 import numpy as np
 import pandas as pd
+import os
+import ops.utils as utils
+import ops.io as io
+import ops.annotate as annotate
+from ops.io import save_stack as save
 import matplotlib.pyplot as plt
+import h5py
 
-def load_hdf_subset(file_path, fraction=0.01, seed=42):
+def load_hdf_subset(file_path, n_rows=20000, population_feature='gene_symbol_0'):
     """
-    Load a random fraction of rows from an HDF file.
+    Load a fixed number of random rows from an HDF file without loading entire file into memory.
     
     Parameters
     ----------
     file_path : str
         Path to HDF file
-    fraction : float
-        Fraction of rows to load (between 0 and 1)
-    seed : int
-        Random seed for reproducibility
+    n_rows : int
+        Number of rows to get
     
     Returns
     -------
     pd.DataFrame
-        Random subset of the data
+        Subset of the data with combined blocks
     """
-    # First try to get the total number of rows
-    full_df = pd.read_hdf(file_path)
-    nrows = len(full_df)
-    
-    # Calculate number of rows to keep
-    np.random.seed(seed)
-    n_samples = int(nrows * fraction)
-    
-    # Randomly select rows
-    selected_idx = np.random.choice(nrows, size=n_samples, replace=False)
-    df = full_df.iloc[selected_idx]
-    
-    print(f"Loaded {len(df):,} cells ({fraction*100:.1f}% of {nrows:,} total cells)")
-    
+    print(f"Reading first {n_rows:,} rows from {file_path}")
+
+    # read the first n_rows of the file path
+    df = pd.read_hdf(file_path, stop=n_rows)
+
+    # print the number of unique populations
+    print(f"Unique populations: {df[population_feature].nunique()}")
+
+    # print the counts of the well variable
+    print(df["well"].value_counts())
+
     return df
+
+def clean_cell_data(df, population_feature, filter_single_gene=False):
+   """
+   Clean cell data by removing cells without perturbation assignments and optionally filtering for single-gene cells.
+   
+   Args:
+       df (pd.DataFrame): Raw dataframe containing cell measurements
+       population_feature (str): Column name containing perturbation assignments
+       filter_single_gene (bool): If True, only keep cells with mapped_single_gene=True
+   
+   Returns:
+       pd.DataFrame: Cleaned dataframe
+   """
+   # Remove cells without perturbation assignments
+   clean_df = df[df[population_feature].notna()].copy()
+   print(f"Found {len(clean_df)} cells with assigned perturbations")
+   
+   if filter_single_gene:
+       # Filter for single-gene cells if requested
+       clean_df = clean_df[clean_df['mapped_single_gene'] == True]
+       print(f"Kept {len(clean_df)} cells with single gene assignments")
+   else:
+       # Warn about multi-gene cells if not filtering
+       multi_gene_cells = len(clean_df[clean_df['mapped_single_gene'] == False])
+       if multi_gene_cells > 0:
+           print(f"WARNING: {multi_gene_cells} cells have multiple gene assignments")
+   
+   return clean_df
 
 def feature_transform(df, transformation_dict, channels):
     """
@@ -168,6 +197,48 @@ def grouped_standardization(df, population_feature='gene_symbol_0', control_pref
     ], axis=1)
 
     return df_out.reset_index()
+
+def add_filenames(df, base_ph_file_path=None, multichannel_dict=None):
+    """
+    Add filename columns to DataFrame for single or multiple channels.
+    
+    Args:
+        df (pd.DataFrame): DataFrame containing well and tile columns
+        base_ph_file_path (str, optional): Base path to the ph image directory (of converted tiff files)
+        multichannel_dict (dict, optional): Dictionary mapping channel names to filename suffixes
+            Example: {
+                'A594': 'Channel-A594_1x1_LF.tif',
+                'A750': 'Channel-A750_1x1_LF.tif',
+                'DAPI': 'Channel-DAPI_1x1_LF.tif',
+                'GFP': 'Channel-GFP_1x1_LF.tif'
+            }
+    
+    Returns:
+        pd.DataFrame: DataFrame with new filename columns for each channel
+    """      
+    df = df.copy()
+    
+    def generate_filename(row, channel_suffix=None):
+        # Basic filename pattern
+        base = f"20X_{row['well']}_Tile-{row['tile']}"
+        
+        if channel_suffix:
+            # Multichannel format
+            return f"{base_ph_file_path}/{base}.phenotype.{channel_suffix}"
+        else:
+            # Single channel format
+            return f"{base_ph_file_path}/{base}.phenotype.tif"
+    
+    if multichannel_dict is not None:
+        # Add a filename column for each channel
+        for channel_name, suffix in multichannel_dict.items():
+            col_name = f'filename_{channel_name}'
+            df[col_name] = df.apply(lambda row: generate_filename(row, suffix), axis=1)
+    else:
+        # Single filename column for non-multichannel case
+        df['filename'] = df.apply(lambda row: generate_filename(row), axis=1)
+    
+    return df
 
 def split_mitotic_simple(df, conditions):
     """
@@ -327,7 +398,7 @@ def suggest_parameters(df, population_feature):
     print("\nMetadata columns detected:")
     print(f"  - Categorical: {', '.join(potential_metadata[:5])}")
 
-def plot_mitotic_distribution(df, threshold_variable, threshold_value, range=(-5, 20), bins=100):
+def plot_mitotic_distribution_hist(df, threshold_variable, threshold_value, bins=100):
     """
     Plot distribution of the threshold variable and calculate percent of mitotic cells.
     
@@ -339,8 +410,6 @@ def plot_mitotic_distribution(df, threshold_variable, threshold_value, range=(-5
         Column name for mitotic cell identification
     threshold_value : float
         Threshold value for separating mitotic cells
-    range : tuple
-        (min, max) values for plotting histogram
     bins : int
         Number of bins for histogram
         
@@ -351,7 +420,7 @@ def plot_mitotic_distribution(df, threshold_variable, threshold_value, range=(-5
     """
     # Create plot
     plt.figure(figsize=(10, 6))
-    plt.hist(df[threshold_variable], bins=bins, range=range)
+    plt.hist(df[threshold_variable], bins=bins)
     plt.title(f'Histogram of {threshold_variable}')
     plt.xlabel(threshold_variable)
     plt.ylabel('Frequency')
@@ -367,3 +436,140 @@ def plot_mitotic_distribution(df, threshold_variable, threshold_value, range=(-5
     print(f"Number of mitotic cells: {mitotic_mask.sum():,}")
     print(f"Total cells: {len(df):,}")
     print(f"Percent mitotic: {percent_mitotic:.2f}%")
+
+def plot_mitotic_distribution_scatter(df, threshold_variable_x, threshold_variable_y, threshold_x, threshold_y,
+                                      alpha=0.5):
+    """
+    Plot scatter plot of two variables with two threshold cutoffs.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe containing cell measurements
+    threshold_variable_x : str
+        Column name for x-axis variable
+    threshold_variable_y : str
+        Column name for y-axis variable
+    threshold_x : float
+        Threshold value for x-axis
+    threshold_y : float
+        Threshold value for y-axis
+    alpha : float
+        Transparency of points
+
+    Returns
+    -------
+    None
+    """
+    # Create plot
+    plt.figure(figsize=(10, 6))
+    plt.scatter(df[threshold_variable_x], df[threshold_variable_y], alpha=alpha)
+    plt.title(f'Scatter plot of {threshold_variable_x} vs {threshold_variable_y}')
+    plt.xlabel(threshold_variable_x)
+    plt.ylabel(threshold_variable_y)
+    plt.axvline(x=threshold_x, color='r', linestyle='--', 
+                label=f'Mitotic threshold ({threshold_x})')
+    plt.axhline(y=threshold_y, color='g', linestyle='--',
+                label=f'Mitotic threshold ({threshold_y})')
+    plt.legend()
+    plt.show()
+
+    # Calculate percent mitotic
+    mitotic_mask_x = df[threshold_variable_x] > threshold_x
+    mitotic_mask_y = df[threshold_variable_y] > threshold_y
+    percent_mitotic = (mitotic_mask_x & mitotic_mask_y).sum() / len(df) * 100
+
+    print(f"Number of mitotic cells: {sum(mitotic_mask_x & mitotic_mask_y):,}")
+    print(f"Total cells: {len(df):,}")
+    print(f"Percent mitotic: {percent_mitotic:.2f}%")
+    
+def create_mitotic_cell_montage(df,
+                                output_dir,
+                                output_prefix,
+                                channels,
+                                display_ranges,
+                                num_cells=30,
+                                cell_size=40,
+                                shape=(3, 10),
+                                selection_params=None,
+                                coordinate_cols=None
+                                ):
+    """
+    Create a montage of cells from DataFrame with flexible parameters.
+    
+    Args:
+        df (pd.DataFrame): DataFrame with cell data
+        output_dir (str): Directory to save montages
+        output_prefix (str): Prefix for output filenames
+        channels (dict): Dictionary mapping channel names to filename column names
+                        e.g. {'DAPI': 'filename_DAPI', 'GFP': 'filename_GFP'}
+        display_ranges (dict): Dictionary mapping channel names to display ranges
+                        e.g. {'DAPI': [(0, 14000)], 'GFP': [(350, 2000)]}
+        num_cells (int): Number of cells to include
+        cell_size (int): Size of cell bounds box
+        shape (tuple): Shape of montage grid (rows, cols)
+        selection_params (dict): Parameters for cell selection
+                        {
+                            'method': 'random' | 'sorted' | 'head',
+                            'sort_by': column name if method='sorted',
+                            'ascending': True/False if method='sorted'
+                        }
+        coordinate_cols (list): Names of coordinate columns for bounds, defaults to ['i_0', 'j_0']
+    
+    Returns:
+        dict: Dictionary mapping channels to their montage arrays
+    """ 
+    if coordinate_cols is None:
+        coordinate_cols = ['i_0', 'j_0']
+    
+    if selection_params is None:
+        selection_params = {'method': 'head'}
+
+    # Select cells based on parameters
+    df_subset = df.copy()
+    if selection_params['method'] == 'random':
+        df_subset = df_subset.sample(n=num_cells)
+    elif selection_params['method'] == 'sorted':
+        df_subset = (df_subset
+                    .sort_values(selection_params['sort_by'], 
+                               ascending=selection_params.get('ascending', True))
+                    .head(num_cells))
+    else:  # 'head'
+        df_subset = df_subset.head(num_cells)
+    
+    # Add bounds
+    df_subset = (df_subset
+                .pipe(annotate.add_rect_bounds, 
+                     width=cell_size, 
+                     ij=coordinate_cols, 
+                     bounds_col='bounds'))
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Store montages
+    montages = {}
+    
+    # Create montages for each channel
+    for channel_name, filename_col in channels.items():
+        # Create grid
+        cell_grid = io.grid_view(
+            files=df_subset[filename_col].tolist(),
+            bounds=df_subset['bounds'].tolist(),
+            padding=0,
+            im_func=None,
+            memoize=True
+        )
+        
+        # Create montage
+        montage = utils.montage(cell_grid, shape=shape)
+        montages[channel_name] = montage
+        
+        # Save montage
+        output_path = os.path.join(output_dir, f'{output_prefix}_{channel_name}.tif')
+        save(output_path, montage,
+             display_mode='grayscale',
+             display_ranges=display_ranges[channel_name])
+        
+        print(f"Saved {channel_name} montage to {output_path}")    
+    
