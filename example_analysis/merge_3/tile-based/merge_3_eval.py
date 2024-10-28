@@ -217,6 +217,7 @@ del df_merged
 print("Starting deduplication process...")
 df_merged_deduped, deduped_stats = deduplicate_cells(df_merged_clean, mapped_single_gene=False, return_stats=True)
 deduped_stats.to_csv(os.path.join(qc_dir, 'deduplication_stats.csv'), index=False)
+df_merged_deduped.to_hdf(os.path.join(home, 'merge_3', 'hdf', 'merged_deduped.hdf'), 'x', mode='w')
 
 print("\nChecking cell matching rates after deduplication...")
 # Load info files for matching rate checks
@@ -245,4 +246,4 @@ df_final = df_merged_deduped.merge(
 
 # Save final merged dataset
 print("Saving final merged dataset...")
-df_final.to_hdf(os.path.join(home, 'merge_3', 'hdf', 'final_merged.hdf'), 'x', mode='w')
+df_final.to_hdf(os.path.join(home, 'merge_3', 'hdf', 'merged_final.hdf'), 'x', mode='w')
