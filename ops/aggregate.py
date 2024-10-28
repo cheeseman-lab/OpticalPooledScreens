@@ -551,22 +551,35 @@ def create_mitotic_cell_montage(df,
     montages = {}
     
     # Create montages for each channel
-    for channel_name, filename_col in channels.items():
+    for channel_name, channel_info in channels.items():
+        # Parse the channel dict
+        if isinstance(channel_info, dict):
+            filename = channel_info['filename']
+            channel_idx = channel_info.get('channel')
+        else:
+            filename = channel_info
+            channel_idx = None
+
         # Create grid
         cell_grid = io.grid_view(
-            files=df_subset[filename_col].tolist(),
+            files=df_subset[filename].tolist(),
             bounds=df_subset['bounds'].tolist(),
             padding=0,
             im_func=None,
             memoize=True
         )
-        
+
         # Create montage
         montage = utils.montage(cell_grid, shape=shape)
         montages[channel_name] = montage
-        
+      
         # Save montage
         output_path = os.path.join(output_dir, f'{output_prefix}_{channel_name}.tif')
+        
+        # Select channel if specified in channel_info
+        if channel_idx is not None:
+            montage = montage[channel_idx]
+        
         save(output_path, montage,
              display_mode='grayscale',
              display_ranges=display_ranges[channel_name])
