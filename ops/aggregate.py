@@ -496,6 +496,7 @@ def create_mitotic_cell_montage(df,
                                 ):
     """
     Create a montage of cells from DataFrame with flexible parameters.
+    Designed to save data directly, for use with interactive visualization.
     
     Args:
         df (pd.DataFrame): DataFrame with cell data
@@ -534,7 +535,7 @@ def create_mitotic_cell_montage(df,
                     .sort_values(selection_params['sort_by'], 
                                ascending=selection_params.get('ascending', True))
                     .head(num_cells))
-    else:  # 'head'
+    else:  
         df_subset = df_subset.head(num_cells)
     
     # Add bounds
@@ -585,4 +586,70 @@ def create_mitotic_cell_montage(df,
              display_ranges=display_ranges[channel_name])
         
         print(f"Saved {channel_name} montage to {output_path}")    
+
+def create_sgrna_montage(df,
+                        gene,
+                        sgrna,
+                        channel,
+                        population_feature='gene_symbol_0',
+                        sgrna_feature='sgRNA_0',
+                        num_cells=50,
+                        cell_size=40,
+                        shape=(5, 10),
+                        coordinate_cols=None):
+    """
+    Create a montage array for a specific gene-sgRNA-channel combination.
+    Designed to work with Snakemake workflows.
+    
+    Args:
+        df (pd.DataFrame): DataFrame with cell data
+        gene (str): Gene identifier to filter for
+        sgrna (str): sgRNA identifier to filter for
+        channel (str): Channel to create montage for
+        population_feature (str): Column name for gene identifier
+        sgrna_feature (str): Column name for sgRNA identifier
+        num_cells (int): Number of cells to include
+        cell_size (int): Size of cell bounds box
+        shape (tuple): Shape of montage grid (rows, cols)
+        coordinate_cols (list): Names of coordinate columns for bounds
+    
+    Returns:
+        np.ndarray: Montage array ready for saving
+    """
+    if coordinate_cols is None:
+        coordinate_cols = ['i_0', 'j_0']
+        
+    # Filter for specific gene-sgRNA combination
+    mask = (df[population_feature] == gene) & (df[sgrna_feature] == sgrna)
+    df_subset = df[mask].copy()
+    
+    if len(df_subset) == 0:
+        return None
+    
+    # Take required number of cells
+    df_subset = df_subset.head(num_cells)
+    
+    # Add bounds
+    df_subset = (df_subset
+                .pipe(annotate.add_rect_bounds, 
+                     width=cell_size, 
+                     ij=coordinate_cols, 
+                     bounds_col='bounds'))
+    
+    # Create grid for this channel
+    filename_col = f"filename_{channel}"
+    cell_grid = io.grid_view(
+        files=df_subset[filename_col].tolist(),
+        bounds=df_subset['bounds'].tolist(),
+        padding=0,
+        im_func=None,
+        memoize=True
+    )
+
+    # Create montage
+    montage = utils.montage(cell_grid, shape=shape)
+    
+    return montage
+
+
     

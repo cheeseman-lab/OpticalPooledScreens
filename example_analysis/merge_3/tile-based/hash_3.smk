@@ -16,9 +16,9 @@ TILES_SBS = list(range(377)) # List of tile numbers + 1
 SBS_CYCLE = '1'
 
 # Define determinant range, minimum score for initial sites for alignment
-det_range = (0.06, 0.065)
-score = 0.1
-initial_sites = [(5,0),(141,32),(370,86),(896,212),(1163,270),(1599,376)]
+DET_RANGE = (0.06, 0.065)
+SCORE = 0.1
+INITIAL_SITES = [(5,0),(141,32),(370,86),(896,212),(1163,270),(1599,376)]
 
 # Define the final output files for the pipeline
 rule all:
@@ -95,9 +95,9 @@ rule fast_alignment:
             df_sbs_info_hash,
             df_ph_xy,
             df_sbs_xy,
-            det_range=det_range,
-            score=score,
-            initial_sites=initial_sites,
+            det_range=DET_RANGE,
+            score=SCORE,
+            initial_sites=INITIAL_SITES,
             tqdn=False,
             n_jobs=threads
         )
