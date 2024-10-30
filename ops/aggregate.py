@@ -198,7 +198,7 @@ def grouped_standardization(df, population_feature='gene_symbol_0', control_pref
 
     return df_out.reset_index()
 
-def add_filenames(df, base_ph_file_path=None, multichannel_dict=None):
+def add_filenames(df, base_ph_file_path=None, multichannel_dict=None, subset=False):
     """
     Add filename columns to DataFrame for single or multiple channels.
     
@@ -237,6 +237,25 @@ def add_filenames(df, base_ph_file_path=None, multichannel_dict=None):
     else:
         # Single filename column for non-multichannel case
         df['filename'] = df.apply(lambda row: generate_filename(row), axis=1)
+
+    # Subset to only data that is required for montage generation
+    if subset:
+        essential_columns = [
+            'gene_symbol_0',  
+            'sgRNA_0',       
+            'well',          
+            'tile',          
+            'i_0',          
+            'j_0',
+        ]
+        # Add filename columns
+        if multichannel_dict is not None:
+            essential_columns.extend([f'filename_{channel}' for channel in multichannel_dict.keys()])
+        else:
+            essential_columns.append('filename')
+            
+        # Only keep columns we need
+        df = df[essential_columns]
     
     return df
 
