@@ -1,83 +1,94 @@
-# merge_3
+# aggregate_4
 
-This module provides a workflow for aligning and merging phenotype microscopy data with sequencing-by-synthesis (SBS) data. It uses triangle hashing algorithms for robust point matching between different imaging modalities.
+This module provides a workflow for standardizing and aggregating single-cell phenotypic data into gene-level measurements. It performs feature transformations, standardization, and generates montages for visual validation.
 
 ## Contents
 
-1. `merge_3_smk_test.ipynb`: Jupyter notebook for testing alignment parameters and visualizing results
-2. `merge_3.smk`: Main Snakemake file for merging aligned phenotype and SBS data
-3. `hash_3.smk`: Snakemake file for generating hash alignments
-4. `merge_3.sh`: Bash script to execute the complete workflow
-5. `merge_3_eval.py`: Python script for collating alignment and phenotype data, filtering, and generating quality control plots.
+1. `aggregate_4_smk_test.ipynb`: Jupyter notebook for testing feature processing and aggregation for a small subset of data
+2. `aggregate_4.smk`: Main Snakemake file for feature processing and aggregation
+3. `aggregate_4.sh`: Bash script to execute the complete workflow
+4. `aggregate_4_eval.py`: Python script for generating quality control plots and validating the transformed data
+5. `transformations.csv`: Configuration file specifying feature-specific transformations
 
 ## Usage
 
-1. Test input patterns and processing:
-   - Run `merge_3_smk_test.ipynb` to visualize alignment quality, test matching parameters, and verify initial site selection.
-   - Modify the input patterns, filtering criteria, and other parameters as needed for your specific setup.
+1. `aggregate_4_smk_test.ipynb`: Jupyter notebook for testing data processing parameters and visualizing results, including:
+   - Setting population features and control parameters
+   - Testing feature transformations
+   - Visualizing mitotic/interphase cell separation
+   - Generating and evaluating montages
+   - Validating gene-level aggregation
 
-2. Run phenotype processing workflow:
-   - Adjust the parameters in `hash_3.smk` and `merge_3.smk` based on your specific setup and requirements.
-   - Execute `merge_3.sh` to run the Snakemake workflow of both of these files.
+2. Run aggregation workflow:
+   - Adjust the parameters in `aggregate_4.smk` based on your specific setup and requirements
+   - Execute `aggregate_4.sh` to run the Snakemake workflow
 
 3. Evaluate results:
-   - Run `merge_3_eval.py`, which collates the final single-cell data and generates quality control plots and statistics for the alignment results.
+   - Run `aggregate_4_eval.py`, which generates quality control plots for the transformed features and tests for missing values in the final datasets
 
 ## Key Features
 
-- Aligns PH images across channels
-- Performs illumination correction
-- Segments cells and nuclei and identifies cytoplasmic regions
-- Extracts phenotypic features using a CellProfiler emulator
-- Generates quality control plots and statistics
+- Applies feature-specific transformations to normalize distributions
+- Standardizes features across the dataset
+- Splits data into mitotic and interphase populations
+- Generates gene-level statistics
+- Creates montages for visual validation
+- Produces quality control plots and statistics
 
 ## Dependencies
 
 - Python libraries: numpy, pandas, matplotlib, seaborn
 - ops package modules:
-  - ops.firesnake: For wrappers used in the Snakemake workflow
-      - ops.triangle_hash: For triangle-based point matching
-  - ops.qc and ops.merge_utils: For quality control functions and downstream processing
+  - ops.aggregate: For feature processing and aggregation functions
+  - ops.process: For data transformation utilities
+  - ops.qc: For quality control functions
 
 ## Notes
 
 Given different formats of saving data in either a well based (single or multichannel) or tile based (multichannel) format, we provide example analysis for the two respective cases. For this step, there is no difference in these workflows.
 
-- Ensure input files exist in the correct directories before running the workflow
-- The determinant range should be adjusted based on:
-  - Objective magnifications (e.g., 20X vs 10X)
-  - Camera binning settings
-  - Expected variation in alignment
-- Initial sites should be carefully chosen to represent well-distributed points across the imaging area
-- Before running the full workflow, it is recommended to test the pipeline on these initial alignments using `merge_3_smk_test.ipynb`.
+- The workflow processes three main populations:
+  - All cells combined
+  - Mitotic cells
+  - Interphase cells
+- Feature transformations are crucial for:
+  - Normalizing skewed distributions
+  - Enabling proper standardization
+  - Ensuring valid statistical comparisons
+- Montages are generated for visual validation of phenotypes
+- Before running the full workflow, it is recommended to test the pipeline on these initial alignments using `aggregate_4_smk_test.ipynb`.
 
 ## File structure for running
 
 ```
 plate/
-├── merge_3.smk
-├── hash_3.smk
-├── process_ph/
-│   └── tables/ 
-├── process_sbs/
-│   └── tables/ 
-└── merge_3/
-│   ├── merge_3_smk_test.ipynb
-│   ├── merge_3.sh
-│   ├── merge_3_eval.py
-│   ├── merge_3_eval.sh
+├── aggregate_4.smk
+├── merge_3/
+│   └── hdf/
+│       └── merged_final.hdf
+└── aggregate_4/
+│   ├── aggregate_4.sh
+│   ├── aggregate_4_eval.py
+│   ├── transformations.csv
 │   ├── hdf/*
-└── alignment/*
+│   │   ├── transformed_data.hdf
+│   │   └── standardized_data.hdf
+│   ├── csv/*
+│   │   ├── all_gene_data.csv
+│   │   ├── mitotic_gene_data.csv
+│   │   └── interphase_gene_data.csv
+│   └── qc/*
+└── montage/*
 ```
 
 Directories marked with an asterisk contain files generated by this workflow.
 
 Note: 
-- Ensure that your input files from the previous processing steps are in the `process_ph/tables/` and `process_sbs/tables/` directories before running the workflow.
-- The test workflow (`merge_3_smk_test.ipynb`) will help visualize and validate alignment parameters for your initial sites.
-- The Snakemake workflows will generate:
-   - Fast alignment files in `merge_3/hdf/`
-   - Merged alignment files in `alignment/`
-   - Final merged dataset in `merge_3/hdf/`
+- Ensure that your input files from the merge_3 step are present in `merge_3/hdf` before running the workflow
+- The workflow generates:
+  - Transformed and standardized data in `aggregate_4/hdf/`
+  - Gene-level statistics in `aggregate_4/csv/`
+  - Quality control plots in `aggregate_4/qc/`
+  - Visual validation montages in `montage/`
 
 Maintaining this file structure is crucial for the correct execution of the workflow. Any changes to the structure may require corresponding adjustments in the scripts.
