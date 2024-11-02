@@ -25,10 +25,9 @@ This module provides a workflow for aligning and merging phenotype microscopy da
 
 ## Key Features
 
-- Aligns PH images across channels
-- Performs illumination correction
-- Segments cells and nuclei and identifies cytoplasmic regions
-- Extracts phenotypic features using a CellProfiler emulator
+- Performs triangle-hashing to find matches between images of different magnifications
+- Merges SBS and phenotyping data at the tile and cell level
+- Merges the entire dataset of CellProfiler features with barcode information
 - Generates quality control plots and statistics
 
 ## Dependencies

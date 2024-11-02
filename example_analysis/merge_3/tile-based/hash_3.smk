@@ -15,7 +15,6 @@ TILES_SBS = list(range(377)) # List of tile numbers + 1
 # Use cycle 1 for metadata read in
 SBS_CYCLE = '1'
 
-# Define determinant range, minimum score for initial sites for alignment
 DET_RANGE = (0.06, 0.065)
 SCORE = 0.1
 INITIAL_SITES = [(5,0),(141,32),(370,86),(896,212),(1163,270),(1599,376)]
