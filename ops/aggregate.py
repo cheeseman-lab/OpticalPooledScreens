@@ -11,16 +11,16 @@ across different granularities (relating to aggregate -- step 4). It includes fu
 
 """
 
+import os
 import numpy as np
 import pandas as pd
-import os
+import matplotlib.pyplot as plt
+import h5py
+import seaborn as sns
 import ops.utils as utils
 import ops.io as io
 import ops.annotate as annotate
 from ops.io import save_stack as save
-import matplotlib.pyplot as plt
-import h5py
-import seaborn as sns
 
 def load_hdf_subset(file_path, n_rows=20000, population_feature='gene_symbol_0'):
     """
