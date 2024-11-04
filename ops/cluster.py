@@ -268,35 +268,30 @@ def rank_transform(df, non_feature_cols=['gene_symbol_0']):
 
 def select_features(df, correlation_threshold=0.9, variance_threshold=0.01, min_unique_values=5):
     """
-    Perform feature selection by:
-    1. Iteratively removing highly correlated features
-    2. Removing low variance features
-    3. Removing features with too few unique values
-    
+    Select features based on correlation, variance, and unique values.
+
     Parameters:
     -----------
-    df : DataFrame
-        Input DataFrame with features as columns
+    df : pd.DataFrame
+        Input DataFrame with features to be selected
     correlation_threshold : float, default=0.9
-        Pearson correlation threshold above which to remove features
+        Threshold for removing highly correlated features
     variance_threshold : float, default=0.01
-        Minimum variance threshold for features
+        Threshold for removing low variance features
     min_unique_values : int, default=5
-        Minimum number of unique values required for a feature
-        
+        Minimum unique values required for a feature to be kept
+
     Returns:
     --------
-    tuple: (filtered_df, removed_features_dict)
-        filtered_df: DataFrame with selected features
-        removed_features_dict: Dictionary with details about removed features
+    tuple
+        (DataFrame with selected features, dictionary of removed features)
+    
     """
     import numpy as np
-    from scipy import stats
+    import pandas as pd
     
-    # Make a copy of the input DataFrame
+    # Make a copy and handle initial column filtering
     df = df.copy()
-
-    # Remove cell_number column if present
     if 'cell_number' in df.columns:
         df = df.drop(columns=['cell_number'])
     
@@ -307,57 +302,50 @@ def select_features(df, correlation_threshold=0.9, variance_threshold=0.01, min_
         'few_unique_values': []
     }
 
-    # Get numeric columns only, but exclude gene_symbol_0
+    # Get numeric columns only, excluding gene_symbol_0
     numeric_cols = df.select_dtypes(include=[np.number]).columns
-    # Create feature columns list excluding gene_symbol_0
     feature_cols = [col for col in numeric_cols if col != 'gene_symbol_0']
     df_numeric = df[feature_cols]
     
-    # Get numeric columns only
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    df_numeric = df[numeric_cols]
+    # Calculate correlation matrix once
+    correlation_matrix = df_numeric.corr().abs()
     
-    # Function to find highly correlated pairs
-    def find_correlated_pairs(correlation_matrix, threshold):
-        pairs = []
-        for i in range(len(correlation_matrix.columns)):
-            for j in range(i+1, len(correlation_matrix.columns)):
-                if abs(correlation_matrix.iloc[i, j]) > threshold:
-                    pairs.append((
-                        correlation_matrix.columns[i],
-                        correlation_matrix.columns[j],
-                        correlation_matrix.iloc[i, j]
-                    ))
-        return pairs
+    # Create a mask to get upper triangle of correlation matrix
+    upper_tri = np.triu(np.ones(correlation_matrix.shape), k=1)
+    high_corr_pairs = []
     
-    # Step 1: Iteratively remove highly correlated features
-    while True:
-        correlation_matrix = df_numeric.corr()
-        correlated_pairs = find_correlated_pairs(correlation_matrix, correlation_threshold)
-        
-        if not correlated_pairs:
-            break
-            
-        # For each pair, remove the feature with higher mean correlation with other features
-        pair_to_remove = correlated_pairs[0]  # Take the first pair
-        col1, col2, corr_value = pair_to_remove
-        
-        # Calculate mean absolute correlation for both features
-        mean_corr1 = correlation_matrix[col1].abs().mean()
-        mean_corr2 = correlation_matrix[col2].abs().mean()
-        
-        # Remove the feature with higher mean correlation
-        feature_to_remove = col1 if mean_corr1 > mean_corr2 else col2
-        
-        removed_features['correlated'].append({
-            'feature': feature_to_remove,
-            'correlated_with': col2 if feature_to_remove == col1 else col1,
-            'correlation': corr_value
-        })
-        
-        df_numeric = df_numeric.drop(columns=[feature_to_remove])
+    # Get all highly correlated pairs at once
+    pairs_idx = np.where((correlation_matrix.values * upper_tri) > correlation_threshold)
+    for i, j in zip(*pairs_idx):
+        high_corr_pairs.append((
+            correlation_matrix.index[i],
+            correlation_matrix.columns[j],
+            correlation_matrix.iloc[i, j]
+        ))
     
-    # Step 2: Remove low variance features
+    # Process all correlated features at once
+    if high_corr_pairs:
+        # Calculate mean correlation for each feature
+        mean_correlations = correlation_matrix.mean()
+        
+        # Track features to remove
+        features_to_remove = set()
+        
+        # For each correlated pair, remove the feature with higher mean correlation
+        for col1, col2, corr_value in high_corr_pairs:
+            if col1 not in features_to_remove and col2 not in features_to_remove:
+                feature_to_remove = col1 if mean_correlations[col1] > mean_correlations[col2] else col2
+                features_to_remove.add(feature_to_remove)
+                
+                removed_features['correlated'].append({
+                    'feature': feature_to_remove,
+                    'correlated_with': col2 if feature_to_remove == col1 else col1,
+                    'correlation': corr_value
+                })
+        
+        df_numeric = df_numeric.drop(columns=list(features_to_remove))
+    
+    # Step 2: Remove low variance features (unchanged but done in one step)
     variances = df_numeric.var()
     low_variance_features = variances[variances < variance_threshold].index
     removed_features['low_variance'] = [
@@ -366,7 +354,7 @@ def select_features(df, correlation_threshold=0.9, variance_threshold=0.01, min_
     ]
     df_numeric = df_numeric.drop(columns=low_variance_features)
     
-    # Step 3: Remove features with few unique values
+    # Step 3: Remove features with few unique values (unchanged but done in one step)
     unique_counts = df_numeric.nunique()
     few_unique_features = unique_counts[unique_counts < min_unique_values].index
     removed_features['few_unique_values'] = [
