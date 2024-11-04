@@ -730,7 +730,7 @@ def heatmap(
         [tick.set_color('red') for tick in cg.ax_heatmap.get_yticklabels(which='both') if tick.get_text() in yticks_emphasis]
 
     if save_plot_path:
-        cg.savefig(save_plot_path, dpi=300, bbox_inches='tight')
+        cg.savefig(save_plot_path, dpi=150, bbox_inches='tight')
 
     return cg
 
