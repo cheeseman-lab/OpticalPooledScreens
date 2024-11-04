@@ -32,6 +32,8 @@ def load_hdf_subset(file_path, n_rows=20000, population_feature='gene_symbol_0')
         Path to HDF file
     n_rows : int
         Number of rows to get
+    population_feature : str
+        Column name containing population identifiers
     
     Returns
     -------
@@ -60,6 +62,12 @@ def explode_with_plotting_dict(df_barcodes, plotting_dict):
         df_barcodes (pd.DataFrame): DataFrame with gene/sgRNA combinations
         plotting_dict (dict): Dictionary mapping channels to filename columns
             Can be simple (str) or nested (dict with 'filename' and optional 'channel')
+    
+    Returns:
+        pd.DataFrame: Exploded DataFrame with channel column. This will add a channel
+                        column to the DataFrame with all channels from the plotting_dict.
+                        This makes it easier to generate appropriate montages.
+    
     """
     channels = list(plotting_dict.keys())
     return (df_barcodes
@@ -599,9 +607,7 @@ def create_mitotic_cell_montage(df,
         # Parse the channel dict 
         if isinstance(channel_info, dict):
             filename = channel_info['filename']
-            if filename == 'filename':
-                filename = 'filename'
-            else:
+            if filename != 'filename':
                 filename = f'filename_{filename}'
             channel_idx = channel_info.get('channel')
         else:
