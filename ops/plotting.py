@@ -22,17 +22,76 @@ from functools import partial
 from adjustText import adjust_text
 
 # Set default plotting parameters
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = 'Helvetica'
-plt.rcParams['mathtext.rm'] = 'Helvetica'
-plt.rcParams['mathtext.it'] = 'Helvetica:italic'
-plt.rcParams['mathtext.bf'] = 'Helvetica:bold'
-plt.rcParams['mathtext.sf'] = 'Helvetica'
+# plt.rcParams['font.family'] = 'sans-serif'
+# plt.rcParams['font.sans-serif'] = 'Helvetica'
+# plt.rcParams['mathtext.rm'] = 'Helvetica'
+# plt.rcParams['mathtext.it'] = 'Helvetica:italic'
+# plt.rcParams['mathtext.bf'] = 'Helvetica:bold'
+# plt.rcParams['mathtext.sf'] = 'Helvetica'
 plt.rcParams['mathtext.fontset'] = 'custom'
 plt.rcParams['font.size'] = 8
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['axes.spines.top'] = False
 plt.rcParams['axes.spines.right'] = False
+
+def plot_cell_histogram(
+        df, 
+        cutoff, 
+        bins=50, 
+        figsize=(12, 6),
+        save_plot_path=None
+    ):
+    """
+    Plot a histogram of cell numbers with a vertical cutoff line and return genes below the cutoff.
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        DataFrame containing 'cell_number' and 'gene_symbol_0' columns
+    cutoff : float
+        Vertical line position and threshold for identifying genes
+    bins : int, optional
+        Number of bins for histogram (default: 50)
+    figsize : tuple, optional
+        Figure size as (width, height) (default: (12, 6))
+    save_plot_path : str, optional
+        Path to save the plot as an image (default: None)
+        
+    Returns:
+    --------
+    None
+    """
+    # Create the figure
+    plt.figure(figsize=figsize)
+    
+    # Plot histogram using seaborn for better styling
+    sns.histplot(data=df, x='cell_number', bins=bins, color='skyblue', alpha=0.6)
+    
+    # Add vertical line at cutoff
+    plt.axvline(x=cutoff, color='red', linestyle='--', label=f'Cutoff: {cutoff}')
+    
+    # Customize the plot
+    plt.title('Distribution of Cell Numbers', fontsize=12, pad=15)
+    plt.xlabel('Cell Number', fontsize=10)
+    plt.ylabel('Count', fontsize=10)
+    plt.legend()
+    
+    # Add grid for better readability
+    plt.grid(True, alpha=0.3)
+    
+    # Get genes below cutoff
+    genes_below_cutoff = df[df['cell_number'] <= cutoff]['gene_symbol_0'].tolist()
+    
+    # Show the plot
+    plt.show()
+
+    # Save the plot if path is provided
+    if save_plot_path:
+        plt.savefig(save_plot_path, dpi=300, bbox_inches='tight')
+    
+    # rint genes below cutoff
+    print(f'Number of genes below cutoff: {len(genes_below_cutoff)}')
+    print(genes_below_cutoff)
 
 def volcano(
     df,
@@ -235,6 +294,7 @@ def two_feature(
     ax=None,
     rasterized=True,
     adjust_labels=True,
+    save_plot_path=None, 
     **kwargs
 ):
     """
@@ -254,6 +314,7 @@ def two_feature(
         ax (matplotlib.axes.Axes, optional): Axes to plot on.
         rasterized (bool): If True, use rasterized rendering.
         adjust_labels (bool): If True, adjust label positions to avoid overlap.
+        save_plot_path (str, optional): Path to save the plot as an image.
 
     Returns:
         matplotlib.axes.Axes: The Axes object with the plot.
@@ -326,6 +387,9 @@ def two_feature(
             adjust_text(labels, df_[x].values, df_[y].values, ax=ax, force_text=(0.1, 0.05), force_points=(0.01, 0.025))
         except:
             pass
+    
+    if save_plot_path:
+        plt.savefig(save_plot_path, dpi=300, bbox_inches='tight')
 
     return ax
 
@@ -349,6 +413,7 @@ def dimensionality_reduction(
     hide_axes=False,
     ax=None,
     rasterized=True,
+    save_plot_path=None,
     **kwargs,
 ):
     """
@@ -374,6 +439,7 @@ def dimensionality_reduction(
         hide_axes (bool): If True, hide the axes.
         ax (matplotlib.axes.Axes, optional): Axes to plot on.
         rasterized (bool): If True, use rasterized rendering.
+        save_plot_path (str, optional): Path to save the plot as an image.
 
     Returns:
         matplotlib.axes.Axes: The Axes object with the plot.
@@ -476,6 +542,9 @@ def dimensionality_reduction(
     if hide_axes:
         ax.axis("off")
 
+    if save_plot_path:
+        ax.figure.savefig(save_plot_path, dpi=300, bbox_inches='tight')
+
     return ax
 
 
@@ -497,6 +566,7 @@ def heatmap(
     yticklabel_kwargs=dict(),
     xticks_emphasis=[],
     yticks_emphasis=[],
+    save_plot_path=None,
     **kwargs
 ):
     """Generates a heatmap with optional clustering and color annotations.
@@ -523,6 +593,7 @@ def heatmap(
     - yticklabel_kwargs (dict): Additional keyword arguments for y-axis tick labels.
     - xticks_emphasis (list): List of x-axis tick labels to emphasize.
     - yticks_emphasis (list): List of y-axis tick labels to emphasize.
+    - save_plot_path (str): Path to save the plot as an image.
     - **kwargs: Additional arguments for seaborn’s `clustermap`.
 
     Returns:
@@ -647,16 +718,19 @@ def heatmap(
     else:
         cg.ax_heatmap.tick_params(axis='y', which='both', pad=2, length=2)
     if x_at:
-        cg.ax_heatmap.tick_params(axis='x', which='major', pad=2, length=2)
-        cg.ax_heatmap.tick_params(axis='x', which='minor', pad=2, length=x_atl)
+        cg.ax_heatmap.tick_params(axis='x', which='major', pad=-2, length=2)
+        cg.ax_heatmap.tick_params(axis='x', which='minor', pad=-2, length=x_atl)
     else:
-        cg.ax_heatmap.tick_params(axis='x', which='both', pad=0, length=2)
+        cg.ax_heatmap.tick_params(axis='x', which='both', pad=-2, length=2)
 
     # Emphasize specific ticks if provided
     if len(xticks_emphasis) > 0:
         [tick.set_visible(False) for tick in cg.ax_heatmap.get_xticklabels(which='both') if tick.get_text() in xticks_emphasis]
     if len(yticks_emphasis) > 0:
         [tick.set_color('red') for tick in cg.ax_heatmap.get_yticklabels(which='both') if tick.get_text() in yticks_emphasis]
+
+    if save_plot_path:
+        cg.savefig(save_plot_path, dpi=300, bbox_inches='tight')
 
     return cg
 

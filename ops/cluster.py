@@ -3,12 +3,13 @@ Clustering Algorithms and Utilities
 This module provides a collection of clustering algorithms and related utilities
 (relating to step 5 -- clustering). It includes functions for:
 
-1. Affinity-based Clustering: Implementation of the Leiden algorithm for community detection.
-2. Hierarchical Clustering: Functions for hierarchical clustering and dendrogram manipulation.
-3. Density-based Clustering: DBSCAN and HDBSCAN implementations.
-4. Spectral Clustering: Implementation of spectral clustering algorithm.
-5. Consensus Clustering: Methods for combining multiple clustering results.
-6. Cluster Refinement: Utilities for merging small clusters and improving clustering results.
+1. Loading and preprocessing data for clustering.
+2. Affinity-based Clustering: Implementation of the Leiden algorithm for community detection.
+3. Hierarchical Clustering: Functions for hierarchical clustering and dendrogram manipulation.
+4. Density-based Clustering: DBSCAN and HDBSCAN implementations.
+5. Spectral Clustering: Implementation of spectral clustering algorithm.
+6. Consensus Clustering: Methods for combining multiple clustering results.
+7. Cluster Refinement: Utilities for merging small clusters and improving clustering results.
 
 """
 
@@ -21,9 +22,591 @@ from igraph import Graph
 import numpy as np
 import seaborn as sns
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
 from scipy.spatial.distance import squareform
 from scipy.cluster import hierarchy
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+import phate
+import leidenalg
 
+def load_gene_level_data(mitotic_path, interphase_path, all_path):
+    """
+    Load the three main dataframes and perform basic validation and cleaning
+    
+    Parameters:
+    -----------
+    mitotic_path : str
+        Path to mitotic cells data
+    interphase_path : str
+        Path to interphase cells data
+    all_path : str
+        Path to combined data
+        
+    Returns:
+    --------
+    tuple of DataFrames
+        (df_mitotic, df_interphase, df_all)
+    """
+    # Load dataframes
+    df_mitotic = pd.read_csv(mitotic_path)
+    df_interphase = pd.read_csv(interphase_path)
+    df_all = pd.read_csv(all_path)
+    
+    # Function to clean and validate each dataframe
+    def clean_and_validate_df(df, name):
+        # Remove unnamed columns
+        unnamed_cols = [col for col in df.columns if 'Unnamed' in str(col)]
+        if unnamed_cols:
+            df = df.drop(columns=unnamed_cols)
+            
+        # Check for required columns
+        required_cols = ['gene_symbol_0', 'gene_count']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns {missing_cols} in {name} dataset")
+        
+        # Reorder columns to ensure gene_count is after gene_symbol_0
+        other_cols = [col for col in df.columns if col not in required_cols]
+        new_cols = ['gene_symbol_0', 'gene_count'] + other_cols
+        df = df[new_cols]
+        df = df.rename(columns={'gene_count': 'cell_number'})
+
+        return df
+    
+    # Clean and validate each dataframe
+    df_mitotic = clean_and_validate_df(df_mitotic, 'mitotic')
+    df_interphase = clean_and_validate_df(df_interphase, 'interphase')
+    df_all = clean_and_validate_df(df_all, 'all')
+    
+    return df_mitotic, df_interphase, df_all
+
+def calculate_mitotic_percentage(df_mitotic, df_interphase):
+    """
+    Calculate the percentage of mitotic cells for each gene using pre-grouped data,
+    filling in zeros for missing genes in either dataset
+    
+    Parameters:
+    -----------
+    df_mitotic : DataFrame
+        DataFrame containing mitotic cell data (already grouped by gene)
+    df_interphase : DataFrame
+        DataFrame containing interphase cell data (already grouped by gene)
+        
+    Returns:
+    --------
+    DataFrame
+        Contains gene names and their mitotic percentages
+    """
+    # Get all unique genes from both datasets
+    all_genes = sorted(list(set(df_mitotic['gene_symbol_0']) | set(df_interphase['gene_symbol_0'])))
+    
+    # Create dictionaries mapping genes to their counts
+    mitotic_counts = dict(zip(df_mitotic['gene_symbol_0'], df_mitotic['cell_number']))
+    interphase_counts = dict(zip(df_interphase['gene_symbol_0'], df_interphase['cell_number']))
+    
+    # Create result DataFrame with all genes, filling in zeros for missing values
+    result_df = pd.DataFrame({
+        'gene': all_genes,
+        'mitotic_cells': [mitotic_counts.get(gene, 0) for gene in all_genes],
+        'interphase_cells': [interphase_counts.get(gene, 0) for gene in all_genes]
+    })
+    
+    # Report genes that were filled with zeros
+    missing_in_mitotic = set(all_genes) - set(df_mitotic['gene_symbol_0'])
+    missing_in_interphase = set(all_genes) - set(df_interphase['gene_symbol_0'])
+    
+    if missing_in_mitotic or missing_in_interphase:
+        print("Note: Some genes were missing and filled with zero counts:")
+        if missing_in_mitotic:
+            print(f"Genes missing in mitotic data (filled with 0): {missing_in_mitotic}")
+        if missing_in_interphase:
+            print(f"Genes missing in interphase data (filled with 0): {missing_in_interphase}")
+    
+    # Calculate total cells and mitotic percentage
+    result_df['total_cells'] = result_df['mitotic_cells'] + result_df['interphase_cells']
+    
+    # Handle division by zero: if total_cells is 0, set percentage to 0
+    result_df['mitotic_percentage'] = np.where(
+        result_df['total_cells'] > 0,
+        (result_df['mitotic_cells'] / result_df['total_cells'] * 100).round(2),
+        0.0
+    )
+    
+    # Sort by mitotic percentage in descending order
+    result_df = result_df.sort_values('mitotic_percentage', ascending=False)
+    
+    # Reset index to remove the old index
+    result_df = result_df.reset_index(drop=True)
+    
+    # Print summary statistics
+    print(f"\nProcessed {len(all_genes)} total genes")
+    print(f"Average mitotic percentage: {result_df['mitotic_percentage'].mean():.2f}%")
+    print(f"Median mitotic percentage: {result_df['mitotic_percentage'].median():.2f}%")
+    
+    return result_df
+
+def remove_low_number_genes(df, min_cells=10):
+    """
+    Remove genes with cell numbers below a certain threshold
+    
+    Parameters:
+    -----------
+    df : DataFrame
+        Input DataFrame containing 'cell_number' column
+    min_cells : int, default=10
+        Minimum number of cells required for a gene to be kept
+        
+    Returns:
+    --------
+    DataFrame
+        DataFrame with genes filtered based on cell_number threshold
+    """
+    # Filter genes based on cell_number
+    filtered_df = df[df['cell_number'] >= min_cells]
+    
+    # Print summary
+    print("\nGene Filtering Summary:")
+    print(f"Original genes: {len(df)}")
+    print(f"Genes with < {min_cells} cells: {len(df) - len(filtered_df)}")
+    print(f"Remaining genes: {len(filtered_df)}")
+    
+    return filtered_df
+
+def remove_missing_features(df):
+    """
+    Remove features (columns) that contain any inf, nan, or blank values
+    
+    Parameters:
+    -----------
+    df : DataFrame
+        Input DataFrame with features as columns
+        
+    Returns:
+    --------
+    DataFrame
+        DataFrame with problematic features removed
+    """
+    import numpy as np
+    
+    df = df.copy()
+    removed_features = {}
+    
+    # Check for infinite values
+    inf_features = df.columns[df.isin([np.inf, -np.inf]).any()].tolist()
+    if inf_features:
+        removed_features['infinite'] = inf_features
+        df = df.drop(columns=inf_features)
+    
+    # Check for null/na values
+    null_features = df.columns[df.isna().any()].tolist()
+    if null_features:
+        removed_features['null_na'] = null_features
+        df = df.drop(columns=null_features)
+    
+    # Check for empty strings (for string columns only)
+    string_cols = df.select_dtypes(include=['object']).columns
+    if len(string_cols) > 0:
+        empty_features = string_cols[df[string_cols].astype(str).eq('').any()].tolist()
+        if empty_features:
+            removed_features['empty_string'] = empty_features
+            df = df.drop(columns=empty_features)
+    
+    # Print summary
+    print("\nFeature Cleaning Summary:")
+    print(f"Original features: {len(df.columns) + sum(len(v) for v in removed_features.values())}")
+    
+    if removed_features:
+        print("\nRemoved features:")
+        if 'infinite' in removed_features:
+            print(f"\nFeatures with infinite values ({len(removed_features['infinite'])}):")
+            for feat in removed_features['infinite']:
+                print(f"- {feat}")
+                
+        if 'null_na' in removed_features:
+            print(f"\nFeatures with null/NA values ({len(removed_features['null_na'])}):")
+            for feat in removed_features['null_na']:
+                print(f"- {feat}")
+                
+        if 'empty_string' in removed_features:
+            print(f"\nFeatures with empty strings ({len(removed_features['empty_string'])}):")
+            for feat in removed_features['empty_string']:
+                print(f"- {feat}")
+    else:
+        print("\nNo problematic features found!")
+    
+    print(f"\nRemaining features: {len(df.columns)}")
+    
+    return df
+
+def rank_transform(df, non_feature_cols=['gene_symbol_0']):
+    """
+    Transform features in a dataframe to their rank values, where highest value gets rank 1.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe with features to be ranked
+    non_feature_cols : list
+        List of column names that should not be ranked (e.g., identifiers, counts)
+        
+    Returns
+    -------
+    pd.DataFrame
+        New dataframe with same structure but feature values replaced with ranks
+    """
+    # Get feature columns (all columns not in non_feature_cols)
+    feature_cols = [col for col in df.columns if col not in non_feature_cols]
+    
+    # Create ranks for all feature columns at once
+    ranked_features = df[feature_cols].rank(ascending=False).astype(int)
+    
+    # Combine non-feature columns with ranked features
+    ranked = pd.concat([df[non_feature_cols], ranked_features], axis=1)
+    
+    return ranked
+
+def select_features(df, correlation_threshold=0.9, variance_threshold=0.01, min_unique_values=5):
+    """
+    Perform feature selection by:
+    1. Iteratively removing highly correlated features
+    2. Removing low variance features
+    3. Removing features with too few unique values
+    
+    Parameters:
+    -----------
+    df : DataFrame
+        Input DataFrame with features as columns
+    correlation_threshold : float, default=0.9
+        Pearson correlation threshold above which to remove features
+    variance_threshold : float, default=0.01
+        Minimum variance threshold for features
+    min_unique_values : int, default=5
+        Minimum number of unique values required for a feature
+        
+    Returns:
+    --------
+    tuple: (filtered_df, removed_features_dict)
+        filtered_df: DataFrame with selected features
+        removed_features_dict: Dictionary with details about removed features
+    """
+    import numpy as np
+    from scipy import stats
+    
+    # Make a copy of the input DataFrame
+    df = df.copy()
+
+    # Remove cell_number column if present
+    if 'cell_number' in df.columns:
+        df = df.drop(columns=['cell_number'])
+    
+    # Store information about removed features
+    removed_features = {
+        'correlated': [],
+        'low_variance': [],
+        'few_unique_values': []
+    }
+
+    # Get numeric columns only, but exclude gene_symbol_0
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    # Create feature columns list excluding gene_symbol_0
+    feature_cols = [col for col in numeric_cols if col != 'gene_symbol_0']
+    df_numeric = df[feature_cols]
+    
+    # Get numeric columns only
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    df_numeric = df[numeric_cols]
+    
+    # Function to find highly correlated pairs
+    def find_correlated_pairs(correlation_matrix, threshold):
+        pairs = []
+        for i in range(len(correlation_matrix.columns)):
+            for j in range(i+1, len(correlation_matrix.columns)):
+                if abs(correlation_matrix.iloc[i, j]) > threshold:
+                    pairs.append((
+                        correlation_matrix.columns[i],
+                        correlation_matrix.columns[j],
+                        correlation_matrix.iloc[i, j]
+                    ))
+        return pairs
+    
+    # Step 1: Iteratively remove highly correlated features
+    while True:
+        correlation_matrix = df_numeric.corr()
+        correlated_pairs = find_correlated_pairs(correlation_matrix, correlation_threshold)
+        
+        if not correlated_pairs:
+            break
+            
+        # For each pair, remove the feature with higher mean correlation with other features
+        pair_to_remove = correlated_pairs[0]  # Take the first pair
+        col1, col2, corr_value = pair_to_remove
+        
+        # Calculate mean absolute correlation for both features
+        mean_corr1 = correlation_matrix[col1].abs().mean()
+        mean_corr2 = correlation_matrix[col2].abs().mean()
+        
+        # Remove the feature with higher mean correlation
+        feature_to_remove = col1 if mean_corr1 > mean_corr2 else col2
+        
+        removed_features['correlated'].append({
+            'feature': feature_to_remove,
+            'correlated_with': col2 if feature_to_remove == col1 else col1,
+            'correlation': corr_value
+        })
+        
+        df_numeric = df_numeric.drop(columns=[feature_to_remove])
+    
+    # Step 2: Remove low variance features
+    variances = df_numeric.var()
+    low_variance_features = variances[variances < variance_threshold].index
+    removed_features['low_variance'] = [
+        {'feature': feat, 'variance': variances[feat]}
+        for feat in low_variance_features
+    ]
+    df_numeric = df_numeric.drop(columns=low_variance_features)
+    
+    # Step 3: Remove features with few unique values
+    unique_counts = df_numeric.nunique()
+    few_unique_features = unique_counts[unique_counts < min_unique_values].index
+    removed_features['few_unique_values'] = [
+        {'feature': feat, 'unique_values': unique_counts[feat]}
+        for feat in few_unique_features
+    ]
+    df_numeric = df_numeric.drop(columns=few_unique_features)
+    
+    # Print summary
+    print("\nFeature Selection Summary:")
+    print(f"Original features: {len(numeric_cols)}")
+    print(f"Features removed due to correlation: {len(removed_features['correlated'])}")
+    print(f"Features removed due to low variance: {len(removed_features['low_variance'])}")
+    print(f"Features removed due to few unique values: {len(removed_features['few_unique_values'])}")
+    print(f"Final features: {len(df_numeric.columns)}")
+    
+    # Create final DataFrame with remaining numeric columns AND gene_symbol_0
+    final_columns = ['gene_symbol_0'] + df_numeric.columns.tolist()
+    
+    return df[final_columns], removed_features
+
+def normalize_to_controls(df, control_prefix='sg_nt'):
+    """
+    Normalize data using StandardScaler fit to control samples.
+    Sets gene_symbol_0 as index if it isn't already.
+    
+    Args:
+        df (pd.DataFrame): DataFrame to normalize
+        control_prefix (str): Prefix identifying control samples in index or gene_symbol_0 column
+        
+    Returns:
+        pd.DataFrame: Normalized DataFrame with gene symbols as index
+    """
+    df_copy = df.copy()
+    
+    # Handle cases where gene_symbol_0 might be a column or already the index
+    if 'gene_symbol_0' in df_copy.columns:
+        df_copy = df_copy.set_index('gene_symbol_0')
+    
+    # Fit scaler on control samples
+    scaler = StandardScaler()
+    control_mask = df_copy.index.str.startswith(control_prefix)
+    scaler.fit(df_copy[control_mask].values)
+    
+    # Transform all data
+    df_norm = pd.DataFrame(
+        scaler.transform(df_copy.values),
+        index=df_copy.index,
+        columns=df_copy.columns
+    )
+    
+    return df_norm
+
+def perform_pca_analysis(df, variance_threshold=0.95, save_plot_path=None):
+    """
+    Perform PCA analysis and create explained variance plot.
+    Expects gene_symbol_0 to be the index.
+    
+    Args:
+        df (pd.DataFrame): Data with gene symbols as index
+        variance_threshold (float): Cumulative variance threshold (default 0.95)
+        save_plot_path (str): Path to save variance plot (optional)
+        
+    Returns:
+        tuple: (pca_df, n_components, pca_object)
+            - pca_df: DataFrame with PCA transformed data (gene symbols as index)
+            - n_components: Number of components needed to reach variance threshold
+            - pca_object: Fitted PCA object
+    """
+    # Initialize and fit PCA
+    pca = PCA()
+    pca_transformed = pca.fit_transform(df)
+    
+    # Create DataFrame with PCA results
+    n_components_total = pca_transformed.shape[1]
+    pca_df = pd.DataFrame(
+        pca_transformed,
+        columns=[f'pca_{n}' for n in range(n_components_total)],
+        index=df.index
+    )
+    
+    # Find number of components needed for threshold
+    cumsum = pca.explained_variance_ratio_.cumsum()
+    n_components = np.argwhere(cumsum >= variance_threshold)[0][0] + 1
+    
+    # Create variance plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(cumsum, '-')
+    plt.axhline(variance_threshold, linestyle='--', color='red', 
+                label=f'{variance_threshold*100}% Threshold')
+    plt.axvline(n_components, linestyle='--', color='blue', 
+                label=f'n={n_components}')
+    plt.ylabel('Cumulative fraction of variance explained')
+    plt.xlabel('Number of principal components included')
+    plt.title('PCA Explained Variance Ratio')
+    plt.grid(True)
+    plt.legend()
+    
+    if save_plot_path:
+        plt.savefig(save_plot_path, bbox_inches='tight', dpi=300)
+    plt.close()  # Close the figure to free memory
+    
+    print(f"Number of components needed for {variance_threshold*100}% variance: {n_components}")
+    print(f"Shape of input data: {df.shape}")
+    
+    # Create threshold-limited version
+    pca_df_threshold = pca_df[[f'pca_{i}' for i in range(n_components)]]
+    
+    print(f"Shape of PCA transformed and reduced data: {pca_df_threshold.shape}")
+
+    return pca_df_threshold, n_components, pca
+
+def run_phate(df, random_state=42, n_jobs=4, knn=10, metric='euclidean', **kwargs):
+    """
+    Run PHATE dimensionality reduction.
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        Input data matrix
+    random_state : int, default=42
+        Random seed for reproducibility
+    n_jobs : int, default=4
+        Number of parallel jobs
+    knn : int, default=10
+        Number of nearest neighbors
+    metric : str, default='euclidean'
+        Distance metric for KNN
+    **kwargs : dict
+        Additional arguments passed to PHATE
+        
+    Returns:
+    --------
+    tuple
+        (DataFrame with PHATE coordinates, PHATE object)
+    """
+    # Initialize and run PHATE
+    p = phate.PHATE(
+        random_state=random_state,
+        n_jobs=n_jobs,
+        knn=knn,
+        knn_dist=metric,
+        **kwargs
+    )
+    
+    # Transform data
+    X_phate = p.fit_transform(df.values)
+    
+    # Create output DataFrame
+    df_phate = pd.DataFrame(
+        X_phate,
+        index=df.index,
+        columns=['PHATE_0', 'PHATE_1']
+    )
+    
+    return df_phate, p
+
+def run_leiden_clustering(weights, resolution=1.0, seed=42):
+    """
+    Run Leiden clustering on a weighted adjacency matrix.
+    
+    Parameters:
+    -----------
+    weights : numpy.ndarray
+        Weighted adjacency matrix
+    resolution : float, default=1.0
+        Resolution parameter for Leiden clustering
+    seed : int, default=42
+        Random seed for reproducibility
+    
+    Returns:
+    --------
+    list
+        Cluster assignments
+    """
+    # Force symmetry by averaging with transpose
+    weights_symmetric = (weights + weights.T) / 2
+    
+    # Create graph from symmetrized weights
+    g = Graph().Weighted_Adjacency(
+        matrix=weights_symmetric.tolist(),
+        mode='undirected'
+    )
+    
+    # Run Leiden clustering
+    partition = leidenalg.find_partition(
+        g,
+        partition_type=leidenalg.RBConfigurationVertexPartition,
+        weights=g.es['weight'],
+        n_iterations=-1,
+        seed=seed,
+        resolution_parameter=resolution
+    )
+    
+    return partition.membership
+
+def phate_leiden_pipeline(df, resolution=1.0, phate_kwargs=None):
+    """
+    Run complete PHATE and Leiden clustering pipeline.
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        Input data matrix
+    resolution : float, default=1.0
+        Resolution parameter for Leiden clustering
+    phate_kwargs : dict, optional
+        Additional arguments for PHATE
+        
+    Returns:
+    --------
+    pandas.DataFrame
+        DataFrame with PHATE coordinates and cluster assignments
+    """
+    # Default PHATE parameters
+    if phate_kwargs is None:
+        phate_kwargs = {}
+    
+    # Run PHATE
+    df_phate, p = run_phate(df, **phate_kwargs)
+    
+    # Get weights from PHATE
+    weights = np.asarray(p.graph.diff_op.todense())
+    
+    # Run Leiden clustering
+    clusters = run_leiden_clustering(weights, resolution=resolution)
+    
+    # Add clusters to results
+    df_phate['cluster'] = clusters
+
+    # Sort by cluster
+    df_phate = df_phate.sort_values('cluster')
+
+    # Print number of clusters and average cluster size
+    print(f"Number of clusters: {df_phate['cluster'].nunique()}")
+    print(f"Average cluster size: {df_phate['cluster'].value_counts().mean():.2f}")
+    
+    return df_phate
+
+# REMOVE ALL BELOW?
 
 class AffinityLeiden(sklearn.base.BaseEstimator, sklearn.base.ClusterMixin):
     """
