@@ -30,9 +30,9 @@ def fov_distance(df: pd.DataFrame,
     df : pd.DataFrame
         DataFrame containing position coordinates
     i : str
-        Column name for x-coordinate
+        Column name for x-coordinate, which represents the x-position within that tile
     j : str
-        Column name for y-coordinate
+        Column name for y-coordinate, which represents the y-position within that tile
     dimensions : tuple
         Tuple of (width, height) for the field of view
     suffix : str
@@ -48,7 +48,7 @@ def fov_distance(df: pd.DataFrame,
     df[f'fov_distance{suffix}'] = df.apply(distance, axis=1)
     return df
 
-def identify_single_gene_mappings(x: pd.Series,
+def identify_single_gene_mappings(sbs_row: pd.Series,
                                 gene_symbol_0: str = 'gene_symbol_0',
                                 gene_symbol_1: str = 'gene_symbol_1') -> bool:
     """
@@ -56,8 +56,8 @@ def identify_single_gene_mappings(x: pd.Series,
     
     Parameters
     ----------
-    x : pd.Series
-        Single row from DataFrame containing gene symbol columns
+    sbs_row : pd.Series
+        Single row from an SBS dataframe containing gene symbol columns for genes mapped to each cell
     gene_symbol_0 : str
         Column name of the first gene symbol
     gene_symbol_1 : str
@@ -68,8 +68,8 @@ def identify_single_gene_mappings(x: pd.Series,
     bool
         True if only gene_symbol_0 exists or both symbols are identical
     """
-    has_single_gene = (pd.notnull(x[gene_symbol_0]) & pd.isnull(x[gene_symbol_1])) 
-    has_matching_genes = (x[gene_symbol_0] == x[gene_symbol_1])
+    has_single_gene = (pd.notnull(sbs_row[gene_symbol_0]) & pd.isnull(sbs_row[gene_symbol_1])) 
+    has_matching_genes = (sbs_row[gene_symbol_0] == sbs_row[gene_symbol_1])
     return has_single_gene or has_matching_genes
 
 def calculate_channel_mins(df: pd.DataFrame) -> pd.DataFrame:
