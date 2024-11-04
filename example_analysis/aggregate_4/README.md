@@ -45,7 +45,7 @@ This module provides a workflow for standardizing and aggregating single-cell ph
 
 ## Notes
 
-Given different formats of saving data in either a well based (single or multichannel) or tile based (multichannel) format, we provide example analysis for the two respective cases. For this step, there is no difference in these workflows.
+Given different formats of saving data in either a well based (single or multichannel) or tile based (multichannel) format, we provide example analysis for the two respective cases. For this step, there is no difference in these workflows, beyond the fact that the generated montages stem from single or multichannel raw image files.
 
 - The workflow processes three main populations:
   - All cells combined
