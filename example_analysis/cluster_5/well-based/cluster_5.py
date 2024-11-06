@@ -1,10 +1,9 @@
 import os
+import json
 import pandas as pd
 import openpyxl
-import json
 import ops.cluster as cluster
 import ops.plotting as plotting
-import matplotlib.pyplot as plt
 
 print("Setting up configuration parameters...")
 
@@ -24,7 +23,7 @@ cutoffs = {
 }
 channels = ['dapi','tubulin','gh2ax','phalloidin']
 
-# Analysis parameters
+# Analysis parameters -- suggested based on previous analyses
 correlation_threshold = 0.99
 variance_threshold = 0.001
 min_unique_values = 5
@@ -103,6 +102,7 @@ for dataset_type, df in datasets.items():
             x=x_feature, 
             y=y_feature,
             control_query='gene_symbol_0.str.startswith("nontargeting")',
+            # remove annotate queries for large datasets, but can be used to highlight genes varying from x/y
             # annotate_query=f'(abs({x_feature} - {y_feature}) > 0.9) & ~gene_symbol_0.str.startswith("nontargeting")',
             # annotate_labels='gene_symbol_0',
             control_kwargs={'alpha': 0.5, 'color': 'gray'},  
