@@ -123,7 +123,7 @@ rule standardize_features:
         
         standardized_df.to_hdf(output[0], key='data', mode='w')
 
-# rule concatenate data -- missing for now
+# TO DO: rule concatenate data -- missing for now
 
 # Split mitotic and interphase data
 rule split_phases:
