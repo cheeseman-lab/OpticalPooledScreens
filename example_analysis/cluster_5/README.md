@@ -4,7 +4,7 @@ This module provides a workflow for analyzing and clustering gene-level phenotyp
 
 ## Contents
 
-1. `cluster_5.py`: Main Python script for performing the complete clustering analysis workflow
+1. `cluster_5.py`: Main Python script for performing the complete clustering analysis workflow.
 
 ## Usage
 
