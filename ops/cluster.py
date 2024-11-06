@@ -408,7 +408,7 @@ def normalize_to_controls(df, control_prefix='sg_nt'):
     
     return df_norm
 
-def perform_pca_analysis(df, variance_threshold=0.95, save_plot_path=None):
+def perform_pca_analysis(df, variance_threshold=0.95, save_plot_path=None, random_state=42):
     """
     Perform PCA analysis and create explained variance plot.
     Expects gene_symbol_0 to be the index.
@@ -417,6 +417,7 @@ def perform_pca_analysis(df, variance_threshold=0.95, save_plot_path=None):
         df (pd.DataFrame): Data with gene symbols as index
         variance_threshold (float): Cumulative variance threshold (default 0.95)
         save_plot_path (str): Path to save variance plot (optional)
+        random_state (int): Random seed for reproducibility
         
     Returns:
         tuple: (pca_df, n_components, pca_object)
@@ -425,7 +426,7 @@ def perform_pca_analysis(df, variance_threshold=0.95, save_plot_path=None):
             - pca_object: Fitted PCA object
     """
     # Initialize and fit PCA
-    pca = PCA()
+    pca = PCA(random_state=random_state)
     pca_transformed = pca.fit_transform(df)
     
     # Create DataFrame with PCA results

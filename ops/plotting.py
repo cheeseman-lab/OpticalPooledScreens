@@ -22,12 +22,6 @@ from functools import partial
 from adjustText import adjust_text
 
 # Set default plotting parameters
-# plt.rcParams['font.family'] = 'sans-serif'
-# plt.rcParams['font.sans-serif'] = 'Helvetica'
-# plt.rcParams['mathtext.rm'] = 'Helvetica'
-# plt.rcParams['mathtext.it'] = 'Helvetica:italic'
-# plt.rcParams['mathtext.bf'] = 'Helvetica:bold'
-# plt.rcParams['mathtext.sf'] = 'Helvetica'
 plt.rcParams['mathtext.fontset'] = 'custom'
 plt.rcParams['font.size'] = 8
 plt.rcParams['pdf.fonttype'] = 42
