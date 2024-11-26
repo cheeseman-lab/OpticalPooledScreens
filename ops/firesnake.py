@@ -259,9 +259,9 @@ class Snake():
 
         Args:
             data (np.ndarray): The input data containing the channels.
-            target (int): Index of the target channel to align.
-            source (int): Index of the source channel to align with.
-            riders (list): List of additional channels to align with the source channel.
+            target (int): The index of the channel you want to align other channels to.
+            source (int): The index of the channel you want to align with the target.
+            riders (list): Additional channel indices that should follow the same alignment as the source channel.
             upsample_factor (int): Factor to upsample the alignment process.
             window (int): Size of the window for alignment.
             remove (str or bool): Specifies whether to remove channels after alignment ('target', 'source', or False).
