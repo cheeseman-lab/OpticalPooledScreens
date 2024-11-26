@@ -522,9 +522,18 @@ def merge_sbs_phenotype(df_0_, df_1_, model, threshold=2):
     -------
     df_merge : pandas DataFrame
         Table of merged identities of cell labels from df_0_ and 
-        df_1_.
+        df_1_. Returns empty DataFrame with correct columns if 
+        input is empty.
     """
+    # Final columns for the merged DataFrame
+    cols_final = ['well', 'tile', 'cell_0', 'i_0', 'j_0', 
+                  'site', 'cell_1', 'i_1', 'j_1', 'distance']
     
+    # Check if either dataframe is None or empty
+    if df_0_ is None or df_1_ is None or (hasattr(df_0_, 'empty') and df_0_.empty) or (hasattr(df_1_, 'empty') and df_1_.empty):
+        # Return empty DataFrame with correct columns
+        return pd.DataFrame(columns=cols_final)
+
     # Extract coordinates from the DataFrames
     X = df_0_[['i', 'j']].values  # Coordinates from dataset 0
     Y = df_1_[['i', 'j']].values  # Coordinates from dataset 1
@@ -546,10 +555,6 @@ def merge_sbs_phenotype(df_0_, df_1_, model, threshold=2):
                  'i': 'i_0', 'j': 'j_0'}
     columns_1 = {'site': 'site', 'cell': 'cell_1',
                  'i': 'i_1', 'j': 'j_1'}
-    
-    # Final columns for the merged DataFrame
-    cols_final = ['well', 'tile', 'cell_0', 'i_0', 'j_0', 
-                  'site', 'cell_1', 'i_1', 'j_1', 'distance']
 
     # Prepare the target DataFrame with matched coordinates from dataset 0
     target = df_0_.iloc[ix[filt]].reset_index(drop=True).rename(columns=columns_0)

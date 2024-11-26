@@ -274,6 +274,167 @@ def volcano(
 
     return ax
 
+def one_feature(
+    df,
+    feature,
+    annotate_query=None,
+    annotate_labels=None,
+    annotate_kwargs=dict(color='red', s=50),
+    yscale=None,
+    control_query=None,
+    control_kwargs=dict(),
+    ax=None,
+    rasterized=True,
+    adjust_labels=True,
+    sort_by=None,
+    ascending=True,
+    figsize=(7, 7),
+    save_plot_path=None,
+    **kwargs
+):
+    """
+    Create a distribution plot for a single feature with optional annotations.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing the feature data
+    feature : str
+        Column name of the feature to plot
+    annotate_query : str, optional
+        Query string to select points to annotate (e.g., "gene_symbol=='CENPA'")
+    annotate_labels : str, optional
+        Column name to use for annotation labels
+    annotate_kwargs : dict
+        Styling for annotated points {'color': 'red', 's': 50, etc.}
+    yscale : str, optional
+        Scale for y-axis ('symlog', 'log', None)
+    control_query : str, optional
+        Query to subset control data
+    control_kwargs : dict
+        Styling for control points
+    ax : matplotlib.axes.Axes, optional
+        Axes object to plot on
+    rasterized : bool
+        Whether to rasterize the scatter plot
+    adjust_labels : bool
+        Whether to adjust label positions to avoid overlap
+    sort_by : str or list, optional
+        Column(s) to sort by. If None, sorts by feature
+    ascending : bool or list
+        Sort ascending vs. descending
+    figsize : tuple
+        Figure size if creating new axes
+    save_plot_path : str, optional
+        Path to save the plot
+    **kwargs : dict
+        Additional arguments passed to main scatter plot
+    
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The axes object containing the plot
+    """
+   
+    # Create a copy of the dataframe to avoid modifications
+    df_ = df.copy()
+    
+    # Sort the dataframe
+    if sort_by is None:
+        sort_by = feature
+    df_ = df_.sort_values(by=sort_by, ascending=ascending)
+    
+    # Create figure if needed
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+    
+    # Create x-axis indices
+    x = np.arange(len(df_))
+    
+    # Plot main distribution
+    scatter_kwargs = {'s': 5, 'alpha': 0.5, 'rasterized': rasterized}
+    scatter_kwargs.update(kwargs)
+    main_scatter = ax.scatter(x, df_[feature], **scatter_kwargs)
+    
+    # Handle control points if specified
+    if control_query is not None:
+        try:
+            df_control = df_.query(control_query)
+            if not df_control.empty:
+                control_indices = df_control.index.map(lambda x: df_.index.get_loc(x))
+                control_values = df_control[feature]
+                
+                control_kwargs_ = {'color': sns.color_palette()[1]}
+                control_kwargs_.update(control_kwargs)
+                
+                ax.scatter(control_indices, control_values, **control_kwargs_)
+        except Exception as e:
+            print(f"Warning: Error processing control points: {e}")
+    
+    # Handle annotations
+    if annotate_query is not None:
+        try:
+            df_annotate = df_.query(annotate_query)
+            if not df_annotate.empty:
+                # Get indices in the sorted dataframe
+                annotate_indices = df_annotate.index.map(lambda x: df_.index.get_loc(x))
+                annotate_values = df_annotate[feature]
+                
+                # Plot annotated points
+                ax.scatter(annotate_indices, annotate_values, **annotate_kwargs)
+                
+                # Add labels if specified
+                if annotate_labels is not None:
+                    labels = []
+                    for idx, val, label in zip(annotate_indices, 
+                                             annotate_values, 
+                                             df_annotate[annotate_labels]):
+                        # Create annotation with arrow
+                        ann = ax.annotate(
+                            str(label),
+                            (idx, val),
+                            xytext=(5, 5),
+                            textcoords='offset points',
+                            arrowprops=dict(
+                                arrowstyle='-',
+                                connectionstyle='arc3,rad=0',
+                                color='gray',
+                                alpha=0.5
+                            )
+                        )
+                        labels.append(ann)
+                    
+                    # Adjust label positions if requested
+                    if adjust_labels and labels:
+                        try:
+                            adjust_text(
+                                labels,
+                                x=list(annotate_indices),
+                                y=list(annotate_values),
+                                ax=ax,
+                                force_points=(0.01, 0.01),
+                                expand_points=(1.5, 1.5),
+                                force_text=(0.01, 0.01),
+                                expand_text=(1.5, 1.5),
+                            )
+                        except Exception as e:
+                            print(f"Warning: Could not adjust label positions: {e}")
+        except Exception as e:
+            print(f"Warning: Error processing annotations: {e}")
+    
+    # Set scales and labels
+    if yscale:
+        ax.set_yscale(yscale)
+    
+    ax.set_xlabel("Sample Index")
+    ax.set_ylabel(feature)
+    
+    # Save plot if requested
+    if save_plot_path:
+        plt.savefig(save_plot_path, dpi=300, bbox_inches='tight')
+    
+    return ax
+
 def two_feature(
     df,
     x,
@@ -601,6 +762,8 @@ def heatmap(
     row_cluster = kwargs.pop('row_cluster', False)
     cmap = kwargs.pop('cmap', 'vlag')
     cbar_pos = kwargs.pop('cbar_pos', None)
+
+    print(cbar_pos)
     
     # Check and set dendrogram ratio
     if col_cluster or row_cluster:
