@@ -3,32 +3,36 @@ Clustering Algorithms and Utilities
 This module provides a collection of clustering algorithms and related utilities
 (relating to step 5 -- clustering). It includes functions for:
 
-1. Loading and preprocessing data for clustering.
-2. Affinity-based Clustering: Implementation of the Leiden algorithm for community detection.
-3. Hierarchical Clustering: Functions for hierarchical clustering and dendrogram manipulation.
-4. Density-based Clustering: DBSCAN and HDBSCAN implementations.
-5. Spectral Clustering: Implementation of spectral clustering algorithm.
-6. Consensus Clustering: Methods for combining multiple clustering results.
-7. Cluster Refinement: Utilities for merging small clusters and improving clustering results.
+1. Data Loading and Processing: Loading and preprocessing gene expression data.
+2. Feature Processing: Rank transformation, normalization, and feature selection.
+3. Dimensionality Reduction: PCA and PHATE implementations.
+4. Clustering: Leiden algorithm and PHATE-Leiden pipeline.
+5. Cluster Analysis: Differential analysis and gene enrichment.
+6. Database Integration: UniProt, STRING, and CORUM data processing.
+7. Statistical Analysis: Correlation, testing, and effect size calculations.
 
 """
 
 import leidenalg
-import graphtools
-import hdbscan
-import sklearn
-from sklearn import cluster
 from igraph import Graph
 import numpy as np
 import seaborn as sns
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from scipy.spatial.distance import squareform
-from scipy.cluster import hierarchy
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import phate
 import leidenalg
+from scipy import stats
+from statsmodels.stats.multitest import multipletests
+import requests
+import io
+import gzip
+import os
+import re
+from requests.adapters import HTTPAdapter, Retry
+from itertools import combinations
 
 def load_gene_level_data(mitotic_path, interphase_path, all_path):
     """
@@ -595,594 +599,402 @@ def phate_leiden_pipeline(df, resolution=1.0, phate_kwargs=None):
     
     return df_phate
 
-# REMOVE ALL BELOW?
-
-class AffinityLeiden(sklearn.base.BaseEstimator, sklearn.base.ClusterMixin):
+def get_uniprot_data():
     """
-    Affinity Leiden clustering algorithm.
-
-    This class implements a clustering algorithm using an affinity matrix and the Leiden algorithm for community detection.
-    The algorithm constructs an affinity matrix from input data, then applies the Leiden algorithm to detect clusters.
-
-    Attributes:
-        knn (int): Number of nearest neighbors for constructing the graph.
-        knn_max (int, optional): Maximum number of nearest neighbors to consider.
-        knn_dist (str): Distance metric for nearest neighbor search (default is "euclidean").
-        n_pca (int): Number of principal components to use for dimensionality reduction.
-        decay (float): Decay parameter for the graph construction.
-        n_landmark (int): Number of landmarks for the graph construction.
-        resolution_parameter (float): Resolution parameter for the Leiden algorithm.
-        n_jobs (int): Number of parallel jobs to run (default is 1).
-        verbose (bool): If True, print progress information.
-        random_state (int, optional): Seed for the random number generator.
-    """
-
-    def __init__(
-        self,
-        knn=5,
-        knn_max=None,
-        knn_dist="euclidean",
-        n_pca=100,
-        decay=40,
-        n_landmark=2000,
-        resolution_parameter=1,
-        n_jobs=1,
-        verbose=True,
-        random_state=None,
-    ):
-        """
-        Initialize the AffinityLeiden clustering algorithm.
-
-        Parameters:
-            knn (int): Number of nearest neighbors for graph construction.
-            knn_max (int, optional): Maximum number of nearest neighbors.
-            knn_dist (str): Distance metric for nearest neighbor search.
-            n_pca (int): Number of principal components.
-            decay (float): Decay parameter for the graph.
-            n_landmark (int): Number of landmarks.
-            resolution_parameter (float): Resolution parameter for Leiden algorithm.
-            n_jobs (int): Number of parallel jobs.
-            verbose (bool): If True, print progress information.
-            random_state (int, optional): Random seed for reproducibility.
-        """
-        self.knn = knn
-        self.knn_max = knn_max
-        self.knn_dist = knn_dist
-        self.decay = decay
-        self.n_pca = n_pca
-        self.n_jobs = n_jobs
-        self.n_landmark = n_landmark
-        self.resolution_parameter = resolution_parameter
-        self.random_state = random_state
-        self.verbose = verbose
-
-    def fit(self, X, y=None):
-        """
-        Fit the AffinityLeiden model to the data.
-
-        Parameters:
-            X (array-like or list): Input data.
-            y (array-like, optional): Target values (not used).
-
-        Returns:
-            self: The fitted instance of the AffinityLeiden class.
-        """
-        if isinstance(X, list):
-            X = np.array(X)
-
-        if X.ndim < 2:
-            raise ValueError("Cannot fit 1D array.")
-
-        if X.shape[0] == 1:
-            raise ValueError("Input contains only 1 sample.")
-
-        self.n_features_in_ = X.shape[1]
-
-        # Create the graph from input data
-        graph = graphtools.Graph(
-            X,
-            n_pca=self.n_pca,
-            n_landmark=self.n_landmark,
-            distance=self.knn_dist,
-            knn=self.knn,
-            knn_max=self.knn_max,
-            decay=self.decay,
-            thresh=1e-4,
-            n_jobs=self.n_jobs,
-            verbose=self.verbose,
-            random_state=self.random_state,
-        )
-
-        # Compute the affinity matrix
-        self.affinity_matrix_ = graph.diff_op.toarray()
-
-        # Create a weighted adjacency graph for Leiden algorithm
-        affinity_igraph = Graph().Weighted_Adjacency(
-            matrix=self.affinity_matrix_.tolist(), mode="undirected"
-        )
-
-        # Apply the Leiden algorithm for community detection
-        partition = leidenalg.find_partition(
-            affinity_igraph,
-            partition_type=leidenalg.RBConfigurationVertexPartition,
-            weights=affinity_igraph.es["weight"],
-            n_iterations=-1,
-            seed=self.random_state,
-            resolution_parameter=self.resolution_parameter,
-        )
-
-        self.labels_ = np.array(partition.membership)
-        self.q_ = partition.q
-        return self
-
-    @property
-    def singularities(self):
-        """
-        Number of singleton clusters (clusters with only one member).
-
-        Returns:
-            int: Number of singleton clusters.
-        """
-        self._singularities = (
-            np.unique(self.labels_, return_counts=True)[1] == 1
-        ).sum()
-        return self._singularities
-
-    @property
-    def n_clusters(self):
-        """
-        Number of unique clusters identified by the algorithm.
-
-        Returns:
-            int: Number of clusters.
-        """
-        self._n_labels = len(np.unique(self.labels_))
-        return self._n_labels
-
-    @property
-    def mean_cluster_size(self):
-        """
-        Mean size of clusters.
-
-        Returns:
-            float: Mean size of the clusters.
-        """
-        self._mean_cluster_size = np.unique(self.labels_, return_counts=True)[1].mean()
-        return self._mean_cluster_size
-
-    def set_index(self, index):
-        """
-        Set custom index for the data.
-
-        Parameters:
-            index (array-like): Custom index.
-
-        Returns:
-            self: The instance with the custom index set.
-        """
-        assert len(index) == len(self.labels_)
-        self.index = index
-        return self
-
-    def adjusted_mutual_info_score(self, s):
-        """
-        Compute the adjusted mutual information score between true labels and provided labels.
-
-        Parameters:
-            s (DataFrame): DataFrame with true labels.
-
-        Returns:
-            float: Adjusted mutual information score.
-        """
-        return sklearn.metrics.adjusted_mutual_info_score(
-            self.labels_, s[self.index].values
-        )
-
-    def adjusted_rand_score(self, s):
-        """
-        Compute the adjusted Rand index between true labels and provided labels.
-
-        Parameters:
-            s (DataFrame): DataFrame with true labels.
-
-        Returns:
-            float: Adjusted Rand index.
-        """
-        return sklearn.metrics.adjusted_rand_score(self.labels_, s[self.index].values)
-
-def fcluster_to_df(Z, n_clusters, index):
-    """
-    Convert hierarchical clustering linkage matrix to a DataFrame with cluster labels.
-
-    Parameters:
-        Z (ndarray): The linkage matrix from hierarchical clustering.
-        n_clusters (int): The number of clusters to form.
-        index (Index): Index for the DataFrame.
+    Fetch all human reviewed UniProt data using REST API
 
     Returns:
-        pd.DataFrame: DataFrame with cluster labels.
+    --------
+    pandas.DataFrame
+        DataFrame with UniProt data
     """
-    clusters = hierarchy.fcluster(Z, n_clusters, criterion='maxclust')
-    return pd.DataFrame(clusters, index=index, columns=['cluster'])
+    # Define UniProt REST API query
+    re_next_link = re.compile(r'<(.+)>; rel="next"')
+    retries = Retry(total=5, backoff_factor=0.25, status_forcelist=[500, 502, 503, 504])
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=retries))
+    
+    # Function to extract next link from headers
+    def get_next_link(headers):
+        if "Link" in headers:
+            match = re_next_link.match(headers["Link"])
+            if match:
+                return match.group(1)
+    
+    # Fetch UniProt data
+    url = "https://rest.uniprot.org/uniprotkb/search"
+    # Query for human reviewed entries with specific fields
+    params = {
+        'query': 'organism_id:9606 AND reviewed:true',
+        'fields': 'gene_names,cc_function,xref_kegg,xref_complexportal,xref_string',
+        'format': 'tsv',
+        'size': 500
+    }
+    
+    # Fetch data in batches
+    initial_response = session.get(url, params=params)
+    batch_url = initial_response.url
+    results = []
+    progress = 0
+    
+    # Process each batch
+    print("Fetching UniProt data...")
+    while batch_url:
+        response = session.get(batch_url)
+        response.raise_for_status()
+        total = int(response.headers["x-total-results"])
+        
+        lines = response.text.splitlines()
+        if progress == 0:
+            headers = lines[0].split('\t')
+        
+        for line in lines[1:] if progress == 0 else lines:
+            results.append(line.split('\t'))
+        
+        progress += len(lines[1:] if progress == 0 else lines)
+        print(f'Progress: {progress} / {total}')
+        
+        batch_url = get_next_link(response.headers)
+    
+    # Create DataFrame from results
+    df = pd.DataFrame(results, columns=headers)
+    print(f"Completed. Total entries: {len(df)}")
+    return df
 
-def leiden_to_df(adjacency, resolution, index, seed=42):
+def merge_phate_uniprot(df_phate):
     """
-    Perform Leiden clustering on an affinity matrix and convert to a DataFrame.
+    Merge PHATE clustering results with UniProt data
 
     Parameters:
-        adjacency (ndarray): Affinity matrix for clustering.
-        resolution (float): Resolution parameter for Leiden algorithm.
-        index (Index): Index for the DataFrame.
-        seed (int, optional): Random seed for reproducibility.
+    -----------
+    df_phate : pandas.DataFrame
+        DataFrame with PHATE coordinates and cluster assignments
 
     Returns:
-        pd.DataFrame: DataFrame with cluster labels.
+    --------
+    pandas.DataFrame
+        Merged DataFrame with UniProt data
+    
     """
-    igraph = Graph().Weighted_Adjacency(matrix=adjacency, mode="undirected")
-
-    partition = leidenalg.find_partition(
-        igraph,
-        partition_type=leidenalg.RBConfigurationVertexPartition,
-        weights=igraph.es["weight"],
-        n_iterations=-1,
-        seed=seed,
-        resolution_parameter=resolution,
+    df_phate['gene_symbol_0'] = df_phate['gene_symbol_0'].str.extract(r'([A-Za-z0-9]+)')[0]
+    
+    # Load UniProt data
+    if not os.path.exists("databases/uniprot_complete_data.csv"):
+        uniprot_df = get_uniprot_data()
+        uniprot_df.to_csv("databases/uniprot_complete_data.csv", index=False)
+        print(f"Saved {len(uniprot_df)} UniProt entries")
+    else:
+        uniprot_df = pd.read_csv("databases/uniprot_complete_data.csv")
+    
+    # Split gene names and explode
+    uniprot_df['gene_names'] = uniprot_df['Gene Names'].str.split()
+    uniprot_df = uniprot_df.explode('gene_names')
+    uniprot_df.rename(columns={'Function [CC]': 'Function'}, inplace=True)
+    
+    # Merge with PHATE data
+    result = pd.merge(
+        df_phate,
+        uniprot_df.rename(columns={'gene_names': 'gene_symbol_0'}),
+        on='gene_symbol_0',
+        how='left'
     )
 
-    return pd.DataFrame(partition.membership, index=index, columns=['cluster'])
+    # Remove duplicate columns
+    for col in result.columns:
+        if result[col].dtype == 'object':
+            result[col] = result[col].str.replace(';', '')
+    
+    return result
 
-def dbscan_to_df(adjacency, eps, min_samples, index):
+def create_cluster_gene_table(df, cluster_col='cluster', columns_to_combine=['gene_symbol_0']):
     """
-    Perform DBSCAN clustering on an affinity matrix and convert to a DataFrame.
+    Creates a table with cluster number and combined gene information.
 
     Parameters:
-        adjacency (ndarray): Affinity matrix for clustering.
-        eps (float): The maximum distance between two samples for them to be considered as in the same neighborhood.
-        min_samples (int): The number of samples in a neighborhood for a point to be considered as a core point.
-        index (Index): Index for the DataFrame.
+    -----------
+    df : pandas.DataFrame
+        DataFrame with cluster assignments and gene information
+    cluster_col : str, default='cluster'
+    columns_to_combine : list, default=['gene_symbol_0']
+        Columns to combine for each cluster
 
     Returns:
-        pd.DataFrame: DataFrame with cluster labels.
-    """
-    distance = 1 - (adjacency / adjacency.max())
-    clusters = cluster.dbscan(distance, metric='precomputed', eps=eps, min_samples=min_samples)[1]
-    return pd.DataFrame(clusters, index=index, columns=['cluster'])
+    --------
+    pandas.DataFrame
+        DataFrame with cluster number, combined gene information, and gene count
 
-def hdbscan_to_df(adjacency, min_cluster_size, min_samples, index):
     """
-    Perform HDBSCAN clustering on an affinity matrix and convert to a DataFrame.
+    # Combine gene information for each cluster
+    cluster_summary = df.groupby(cluster_col).agg({
+        col: lambda x: ', '.join(sorted([str(val) for val in set(x) if pd.notna(val)]))
+        for col in columns_to_combine
+    }).reset_index()
+    
+    # Count number of unique genes in each cluster
+    cluster_summary['gene_number'] = df.groupby(cluster_col)[columns_to_combine[0]].agg(
+        lambda x: len([val for val in set(x) if pd.notna(val)])
+    )
+    
+    # Sort by cluster number
+    cluster_summary = cluster_summary.rename(columns={cluster_col: 'cluster_number'})
+    cluster_summary = cluster_summary.sort_values('cluster_number').reset_index(drop=True)
+    
+    return cluster_summary
+
+def analyze_differential_features(cluster_gene_table, feature_df, n_top=5, exclude_cols=['gene_symbol_0', 'cell_number']):
+    """
+    Analyze differential features between clusters
 
     Parameters:
-        adjacency (ndarray): Affinity matrix for clustering.
-        min_cluster_size (int): The minimum size of a cluster.
-        min_samples (int): The number of samples in a neighborhood for a point to be considered a core point.
-        index (Index): Index for the DataFrame.
+    -----------
+    cluster_gene_table : pandas.DataFrame
+        DataFrame with cluster assignments and gene information
+    feature_df : pandas.DataFrame
+        DataFrame with feature values for each gene
+    n_top : int, default=5
+        Number of top features to select
+    exclude_cols : list, default=['gene_symbol_0', 'cell_number']
+        Columns to exclude from feature analysis
 
     Returns:
-        pd.DataFrame: DataFrame with cluster labels.
-    """
-    distance = 1 - (adjacency / adjacency.max())
-    clusters = hdbscan.hdbscan(distance, metric='precomputed', min_cluster_size=min_cluster_size, min_samples=min_samples)[0]
-    return pd.DataFrame(clusters, index=index, columns=['cluster'])
+    --------
+    tuple
+        (DataFrame with top features for each cluster, dictionary of feature analysis results)   
 
-def spectral_to_df(adjacency, n_clusters, index, seed=42):
     """
-    Perform spectral clustering on an affinity matrix and convert to a DataFrame.
+    # Get feature columns
+    feature_cols = [col for col in feature_df.columns if col not in exclude_cols]
+    results = {}
+    
+    # Copy the cluster gene table
+    cluster_gene_table = cluster_gene_table.copy()
+    cluster_gene_table[f'top_{n_top}_up'] = ''
+    cluster_gene_table[f'top_{n_top}_down'] = ''
+    
+    # Analyze each cluster
+    total_clusters = len(cluster_gene_table)
+    print(f"Analyzing {total_clusters} clusters...")
+    
+    # Iterate over each cluster
+    for idx, row in enumerate(cluster_gene_table.iterrows(), 1):
+        cluster_num = row[1]['cluster_number']
+        cluster_genes = set(row[1]['gene_symbol_0'].split(', '))
+        
+        print(f"Processing cluster {idx}/{total_clusters} (#{cluster_num})", end='\r')
+        
+        # Split data into cluster and non-cluster
+        cluster_data = feature_df[feature_df['gene_symbol_0'].isin(cluster_genes)][feature_cols]
+        non_cluster_data = feature_df[~feature_df['gene_symbol_0'].isin(cluster_genes)][feature_cols]
+        
+        # Perform t-test for each feature
+        t_stats, p_values, effect_sizes = [], [], []
+        
+        # Calculate t-statistic, p-value, and effect size for each feature
+        for feature in feature_cols:
+            t_stat, p_val = stats.ttest_ind(cluster_data[feature], non_cluster_data[feature])
+            cohens_d = (cluster_data[feature].mean() - non_cluster_data[feature].mean()) / np.sqrt(
+                ((cluster_data[feature].std() ** 2 + non_cluster_data[feature].std() ** 2) / 2))
+            
+            # Store results
+            t_stats.append(abs(t_stat))
+            p_values.append(p_val)
+            effect_sizes.append(cohens_d)
+            
+        # Store results in DataFrame
+        feature_results = pd.DataFrame({
+            'feature': feature_cols,
+            't_statistic': t_stats,
+            'p_value': p_values,
+            'effect_size': effect_sizes
+        })
+        
+        # Adjust p-values using Benjamini-Hochberg method
+        feature_results['p_value_adj'] = multipletests(feature_results['p_value'], method='fdr_bh')[1]
+        feature_results['abs_effect_size'] = feature_results['effect_size'].abs()
+        
+        # Select top features based on effect size
+        top_up = feature_results.nlargest(n_top, 'effect_size')
+        top_down = feature_results.nsmallest(n_top, 'effect_size')
+        
+        # Update cluster gene table with top features
+        cluster_idx = cluster_gene_table.index[cluster_gene_table['cluster_number'] == cluster_num][0]
+        cluster_gene_table.at[cluster_idx, f'top_{n_top}_up'] = ', '.join(top_up['feature'])
+        cluster_gene_table.at[cluster_idx, f'top_{n_top}_down'] = ', '.join(top_down['feature'])
+        
+        # Store feature analysis results
+        results[cluster_num] = feature_results
+        
+    return cluster_gene_table, results
+
+def get_string_data():
+    """
+    Fetch STRING interaction data for human proteins
+    """
+    print("Fetching STRING data...")
+    url = "https://stringdb-downloads.org/download/protein.links.v12.0/9606.protein.links.v12.0.txt.gz"
+    
+    response = requests.get(url)
+    response.raise_for_status()
+    
+    # Read compressed data directly into DataFrame
+    with gzip.open(io.BytesIO(response.content), 'rt') as f:
+        df = pd.read_csv(f, sep=' ')
+    
+    # Filter interactions with combined score >= 950
+    df = df[df['combined_score'] >= 950]
+    print(f"Completed. Total interactions: {len(df)}")
+    return df
+
+def get_corum_data():
+    """
+    Fetch CORUM complex data for human proteins
+    """
+    print("Fetching CORUM data...")
+    url = "https://mips.helmholtz-muenchen.de/fastapi-corum/public/file/download_current_file"
+    
+    # Parameters for human complexes in text format
+    params = {
+        "file_id": "human",
+        "file_format": "txt"
+    }
+    
+    response = requests.get(url, params=params, verify=False)
+    response.raise_for_status()
+    
+    # Read data into DataFrame
+    df = pd.read_csv(io.StringIO(response.text), sep='\t')
+    print(f"Completed. Total complexes: {len(df)}")
+    return df
+
+def process_interactions(df_clusters):
+    """
+    Process cluster data against STRING and CORUM databases
 
     Parameters:
-        adjacency (ndarray): Affinity matrix for clustering.
-        n_clusters (int): The number of clusters to form.
-        index (Index): Index for the DataFrame.
-        seed (int, optional): Random seed for reproducibility.
+    -----------
+    df_clusters : pandas.DataFrame
+        DataFrame with cluster information
 
     Returns:
-        pd.DataFrame: DataFrame with cluster labels.
+    --------
+    pandas.DataFrame
+        DataFrame with cluster information and validation results
+
     """
-    if not np.array_equal(adjacency, adjacency.T):
-        adjacency = (adjacency + adjacency.T) / 2
-
-    clusters = cluster.spectral_clustering(adjacency, n_clusters=n_clusters, random_state=seed)
-    return pd.DataFrame(clusters, index=index, columns=['cluster'])
-
-def consensus_matrix(dfs, column="cluster", weights=None, combine_nt=False, nt_threshold=1):
-    """
-    Compute the consensus matrix from multiple clustering DataFrames.
-
-    Parameters:
-        dfs (list of pd.DataFrame): List of DataFrames with cluster labels.
-        column (str): Column name for cluster labels in each DataFrame.
-        weights (list of float, optional): Weights for each DataFrame. Must sum to 1.
-        combine_nt (bool, optional): Whether to combine non-target clusters.
-        nt_threshold (int, optional): Threshold for combining non-target clusters.
-
-    Returns:
-        pd.DataFrame: Consensus matrix.
-    """
-    # Check for identical indices across DataFrames
-    [pd.testing.assert_index_equal(dfs[0].index, df.index) for df in dfs[1:]]
-
-    if weights is not None:
-        if sum(weights) != 1:
-            raise ValueError("`weights` must sum to 1")
-        if len(weights) != len(dfs):
-            raise ValueError("`weights` must have the same length as `dfs`")
+    # Check if cached data exists, otherwise fetch and save
+    if not os.path.exists(f"databases/9606.protein.links.v12.0.txt"):
+        # Fetch STRING data
+        string_df = get_string_data()
+        string_df.to_csv(f"databases/9606.protein.links.v12.0.txt", sep='\t', index=False)
+        print(f"Saved {len(string_df)} STRING interactions")
     else:
-        weights = [1 / len(dfs)] * len(dfs)
-
-    C = np.zeros((dfs[0].pipe(len),) * 2)
-
-    for df, w in zip(dfs, weights):
-        if combine_nt:
-            df = combine_nt_clusters(df, col=column, nt_threshold=nt_threshold)
-        C += np.equal(*np.meshgrid(*(df[column].values,) * 2)) * w
-
-    df_consensus = pd.DataFrame(C, columns=dfs[0].index, index=dfs[0].index)
-    return df_consensus
-
-def subsampled_consensus_matrix(dfs, column="cluster", combine_nt=False, nt_threshold=1, tqdm=False):
-    """
-    Compute the subsampled consensus matrix from multiple clustering DataFrames.
-
-    Parameters:
-        dfs (list of pd.DataFrame): List of DataFrames with cluster labels.
-        column (str): Column name for cluster labels in each DataFrame.
-        combine_nt (bool, optional): Whether to combine non-target clusters.
-        nt_threshold (int, optional): Threshold for combining non-target clusters.
-        tqdm (bool, optional): Whether to display a progress bar.
-
-    Returns:
-        pd.DataFrame: Subsampled consensus matrix.
-    """
-    full_index = set()
-    for df in dfs:
-        full_index |= set(df.index)
-
-    full_index = pd.MultiIndex.from_tuples(sorted(full_index), names=["gene_symbol", "gene_id"])
-
-    C = np.zeros((len(full_index),) * 2)
-    C_count = np.zeros_like(C)
-
-    if tqdm:
-        from tqdm.auto import tqdm
-        dfs = tqdm(dfs)
-
-    for df in dfs:
-        df = df.sort_index()
-        if combine_nt:
-            df = combine_nt_clusters(df, col=column, nt_threshold=nt_threshold)
-        selected = np.argwhere(full_index.isin(df.index))
-        C_count[selected, selected.T] += 1
-        C[selected, selected.T] += np.equal(*np.meshgrid(*(df[column].values,) * 2)).astype(int)
-
-    df_consensus = pd.DataFrame(C / C_count, columns=full_index, index=full_index)
-    return df_consensus
-
-def linkage_clustermap(df_similarity, method="single"):
-    """
-    Create a clustermap based on a similarity matrix using hierarchical clustering.
-
-    Parameters:
-        df_similarity (pd.DataFrame): Similarity matrix.
-        method (str): Method for hierarchical clustering (e.g., "single", "complete").
-
-    Returns:
-        sns.matrix.ClusterGrid: Clustermap object.
-    """
-    linkage = getattr(hierarchy, method)(squareform(1 - df_similarity.values))
-    cm = sns.clustermap(df_similarity, row_linkage=linkage, col_linkage=linkage)
-    return cm
-
-def combine_nt_clusters(df, col="cluster", nt_threshold=1):
-    """
-    Combine non-target clusters in a DataFrame.
-
-    Parameters:
-        df (pd.DataFrame): DataFrame with cluster labels.
-        col (str): Column name for cluster labels.
-        nt_threshold (int): Threshold for combining non-target clusters.
-
-    Returns:
-        pd.DataFrame: DataFrame with non-target clusters combined.
-    """
-    df_ = df.copy()
-    if nt_threshold is None:
-        df_ = df_.astype({col: "category"})
-        s = (
-            df_.query('gene_id=="-1"')[col].value_counts(normalize=True).sort_index()
-            > df_[col].value_counts(normalize=True).sort_index()
-        )
-        nt_clusters = list(s.index.categories[s])
+        print("Loading cached STRING interactions...")
+        string_df = pd.read_csv(f"databases/9606.protein.links.v12.0.txt", sep='\t')
+    
+    if not os.path.exists(f"databases/corum_humanComplexes.txt"):
+        # Fetch CORUM data
+        corum_df = get_corum_data()
+        corum_df.to_csv(f"databases/corum_humanComplexes.txt", sep='\t', index=False)
+        print(f"Saved {len(corum_df)} CORUM complexes")
     else:
-        nt_clusters = list(
-            df_.query('gene_id=="-1"')[col]
-            .value_counts()
-            .rename("nt_count")
-            .to_frame()
-            .query("nt_count>=@nt_threshold")
-            .index
-        )
-    df_ = df_.astype({col: int})
-    df_.loc[df_[col].isin(nt_clusters), col] = -1
-    return df_
-
-def fcluster_combine_leaves(Z, t, criterion="distance", depth=2, R=None, monocrit=None):
-    """
-    Combine clusters in a hierarchical clustering linkage matrix to ensure no leaf clusters remain.
-
-    Parameters:
-        Z (ndarray): The linkage matrix from hierarchical clustering.
-        t (float): The threshold to apply.
-        criterion (str): Criterion to use for cluster formation (default is "distance").
-        depth (int): The depth of the tree to use for cluster formation.
-        R (float, optional): Criterion parameter (not used in this implementation).
-        monocrit (float, optional): Monotonicity criterion (not used in this implementation).
-
-    Returns:
-        ndarray: Array with cluster labels after combining leaves.
-    """
-    _ = hierarchy.is_valid_linkage(Z, throw=True)
-    N = Z.shape[0] + 1
-    T = hierarchy.fcluster(Z, t, criterion=criterion, depth=depth, R=R, monocrit=monocrit)
-    L, M = hierarchy.leaders(Z, T)
-    leaf_leaders = list(L[L < N])
-
-    if len(leaf_leaders) == 0:
-        return T
-
-    max_cluster = T.max()
-
-    for n, link in enumerate(
-        Z[np.logical_or(*(np.in1d(Z[:, l], leaf_leaders) for l in range(2))), :2].astype("i")
-    ):
-        if n % 10 == 0:
-            print(
-                f"After {n} iterations, {len(leaf_leaders)} leaf leaders left with {len(np.unique(T))} total clusters"
-            )
-
-        if all([l in leaf_leaders for l in link]):
-            max_cluster += 1
-            T[link] = max_cluster
-            _ = [leaf_leaders.remove(l) for l in link]
-        elif any([l in leaf_leaders for l in link]):
-            node_index = link[0] in leaf_leaders
-            node, leaf = link[int(node_index)], link[int(~node_index)]
-
-            if node in L:
-                downstream_leaders = [node]
-            else:
-                tree = hierarchy.to_tree(Z, rd=True)[1][node]
-
-                def check_node(node, nodes_to_check, downstream_leaders, L):
-                    if node.id in L:
-                        downstream_leaders.append(node.id)
-                    else:
-                        nodes_to_check.extend([node.left, node.right])
-                    return nodes_to_check, downstream_leaders
-
-                downstream_leaders = []
-                nodes_to_check = [tree.left, tree.right]
-
-                while len(nodes_to_check) > 0:
-                    n_ = nodes_to_check.pop(0)
-                    if all([s is None for s in [n_.left, n_.right]]):
-                        raise ValueError(
-                            "While traversing the tree, a leaf node was reached"
-                            f", node {n_.id}. In theory this should not occur."
-                        )
-                    nodes_to_check, downstream_leaders = check_node(
-                        n_, nodes_to_check, downstream_leaders, L
-                    )
-
-            max_cluster += 1
-            merge_clusters = M[np.in1d(L, downstream_leaders)]
-            T[np.in1d(T, merge_clusters)] = max_cluster
-            T[leaf] = max_cluster
-            _ = leaf_leaders.remove(leaf)
-        else:
+        print("Loading cached CORUM complexes...")
+        corum_df = pd.read_csv(f"databases/corum_humanComplexes.txt", sep='\t')
+    
+    # Process STRING and CORUM data
+    string_pairs = set(map(tuple, string_df[['protein1', 'protein2']].values))
+    
+    # Process CORUM data
+    corum_complex_info = {}
+    corum_pairs = set()
+    # Iterate over each complex
+    for _, complex_row in corum_df.iterrows():
+        if pd.isna(complex_row['subunits_gene_name']):
             continue
+        # Split gene names and create pairs
+        genes = [gene.strip() for gene in complex_row['subunits_gene_name'].split(';')]
+        if len(genes) >= 2:
+            pairs = set(combinations(sorted(genes), 2))
+            corum_pairs.update(pairs)
+            for pair in pairs:
+                if pair not in corum_complex_info:
+                    corum_complex_info[pair] = []
+                corum_complex_info[pair].append(complex_row['ComplexName'])
+    
+    # Process cluster data
+    all_string_predicted_pairs = set()
+    all_corum_predicted_pairs = set()
+    
+    # Iterate over each cluster
+    results = []
+    for _, row in df_clusters.iterrows():
+        cluster_num = row['cluster_number']
+        genes_corum = set(gene.strip() for gene in row['gene_symbol_0'].replace(', ', ',').split(','))
+        genes_string = set(gene.strip() for gene in row['STRING'].replace(', ', ',').split(','))
+        
+        # Find matching pairs in CORUM
+        corum_cluster_pairs = set()
+        if len(genes_corum) >= 2:
+            corum_cluster_pairs = set(combinations(sorted(genes_corum), 2))
+            all_corum_predicted_pairs.update(corum_cluster_pairs)
+        
+        # Find matching pairs in STRING
+        string_cluster_pairs = set()
+        if len(genes_string) >= 2:
+            string_cluster_pairs = set(combinations(sorted(genes_string), 2))
+            all_string_predicted_pairs.update(string_cluster_pairs)
+        
+        matching_string_pairs = string_cluster_pairs & string_pairs if string_cluster_pairs else set()
+        matching_corum_pairs = corum_cluster_pairs & corum_pairs if corum_cluster_pairs else set()
 
-        L, M = hierarchy.leaders(Z, T)
+        # Find matching CORUM complexes        
+        matching_complexes = []
+        for pair in matching_corum_pairs:
+            if pair in corum_complex_info:
+                matching_complexes.extend(corum_complex_info[pair])
+        
+        # Remove duplicates
+        unique_complexes = list(dict.fromkeys(matching_complexes))
+        
+        # Store results
+        results.append({
+            'cluster_number': cluster_num,
+            'total_string_pairs': len(string_cluster_pairs),
+            'total_corum_pairs': len(corum_cluster_pairs),
+            'string_validated_pairs': len(matching_string_pairs),
+            'corum_validated_pairs': len(matching_corum_pairs),
+            'string_validation_ratio': len(matching_string_pairs) / len(string_cluster_pairs) if string_cluster_pairs else 0,
+            'corum_validation_ratio': len(matching_corum_pairs) / len(corum_cluster_pairs) if corum_cluster_pairs else 0,
+            'matching_corum_complexes': '; '.join(unique_complexes)
+        })
+    
+    # Calculate global metrics
+    string_true_positives = all_string_predicted_pairs & string_pairs
+    string_precision = len(string_true_positives) / len(all_string_predicted_pairs) if all_string_predicted_pairs else 0
+    string_recall = len(string_true_positives) / len(string_pairs) if string_pairs else 0
+    string_f1 = 2 * (string_precision * string_recall) / (string_precision + string_recall) if (string_precision + string_recall) else 0
 
-        if len(leaf_leaders) == 0:
-            break
+    corum_true_positives = all_corum_predicted_pairs & corum_pairs
+    corum_precision = len(corum_true_positives) / len(all_corum_predicted_pairs) if all_corum_predicted_pairs else 0
+    corum_recall = len(corum_true_positives) / len(corum_pairs) if corum_pairs else 0
+    corum_f1 = 2 * (corum_precision * corum_recall) / (corum_precision + corum_recall) if (corum_precision + corum_recall) else 0
 
-    leaf_leaders = list(L[L < N])
-
-    if len(leaf_leaders) == 0:
-        print(
-            f"All leaf leaders combined, resulting in {len(np.unique(T))} total clusters"
-        )
-
-        unique, inverse = np.unique(T, return_inverse=True)
-        return np.arange(0, unique.shape[0])[inverse]
-    else:
-        raise ValueError(f"Failed to merge leaf leaders {leaf_leaders}")
-
-def fcluster_multi_threshold(
-    Z, ts, criterion="distance", depth=2, R=None, monocrit=None, min_cluster_size=2
-):
-    """
-    Perform hierarchical clustering with multiple thresholds and combine small clusters.
-
-    Parameters:
-        Z (ndarray): The linkage matrix from hierarchical clustering.
-        ts (list of float): List of thresholds to apply.
-        criterion (str): Criterion to use for cluster formation (default is "distance").
-        depth (int): The depth of the tree to use for cluster formation.
-        R (float, optional): Criterion parameter (not used in this implementation).
-        monocrit (float, optional): Monotonicity criterion (not used in this implementation).
-        min_cluster_size (int): Minimum size of clusters to keep.
-
-    Returns:
-        ndarray: Array with cluster labels after applying multiple thresholds and merging small clusters.
-    """
-    _ = hierarchy.is_valid_linkage(Z, throw=True)
-    T_ = -1 * np.ones(Z.shape[0] + 1)
-    N = len(ts)
-
-    for n, t in enumerate(ts):
-        T = hierarchy.fcluster(
-            Z, t, criterion=criterion, depth=depth, R=R, monocrit=monocrit
-        )
-        uniques_, counts_ = np.unique(T, return_counts=True)
-        if n == (N - 1):
-            keep = T_ == -1
-        else:
-            keep = np.logical_and(
-                np.in1d(T, uniques_[counts_ >= min_cluster_size]), T_ == -1
-            )
-        T_[keep] = T[keep] + T_.max()
-
-    uniques_, inverse_ = np.unique(T_, return_inverse=True)
-    return np.arange(0, uniques_.shape[0])[inverse_]
-
-def merge_small_clusters(y, T, method="complete", min_cluster_size=2):
-    """
-    Internal function to merge small clusters based on distance matrix `y`.
-
-    Parameters:
-        y (ndarray): Distance matrix.
-        T (ndarray): Cluster labels.
-        method (str): Method for merging clusters ("complete" or "single").
-        min_cluster_size (int): Minimum size of clusters to keep.
-
-    Returns:
-        ndarray: Array with updated cluster labels after merging small clusters.
-    """
-    T = T.copy()
-    uniques, counts = np.unique(T, return_counts=True)
-    size_sort = np.argsort(counts, kind="stable")[::-1]
-    uniques, counts = uniques[size_sort], counts[size_sort]
-
-    small_clusters = list(uniques[counts < min_cluster_size])
-
-    if len(small_clusters) == 0:
-        raise UserWarning(f"No clusters with fewer than {min_cluster_size} members found.")
-        return T
-
-    if method == "complete":
-        distance_func = np.max
-    elif method == "single":
-        distance_func = np.min
-    else:
-        raise NotImplementedError(f"`method`={method} not implemented")
-
-    while len(small_clusters) > 0:
-        s_c = small_clusters.pop(0)
-        merge = np.argmin(
-            [
-                distance_func(y[np.ix_(T == s_c, T == c)])
-                for c in uniques[uniques != s_c]
-            ]
-        )
-        T[T == s_c] = uniques[uniques != s_c][merge]
-
-        uniques, counts = np.unique(T, return_counts=True)
-        size_sort = np.argsort(counts, kind="stable")[::-1]
-        uniques, counts = uniques[size_sort], counts[size_sort]
-
-        small_clusters = list(uniques[counts < min_cluster_size])
-
-    print(f"All small clusters combined, resulting in {len(uniques)} total clusters")
-    uniques, inverse = np.unique(T, return_inverse=True)
-    return np.arange(0, uniques.shape[0])[inverse]
+    results_df = pd.DataFrame(results)
+    cluster_results = df_clusters.merge(results_df, on='cluster_number')
+    
+    # Add global metrics
+    global_metrics = {
+        'string_global_precision': string_precision,
+        'string_global_recall': string_recall,
+        'string_global_f1': string_f1,
+        'string_total_predicted_pairs': len(all_string_predicted_pairs),
+        'string_total_reference_pairs': len(string_pairs),
+        'string_total_correct_pairs': len(string_true_positives),
+        'corum_global_precision': corum_precision,
+        'corum_global_recall': corum_recall,
+        'corum_global_f1': corum_f1,
+        'corum_total_predicted_pairs': len(all_corum_predicted_pairs),
+        'corum_total_reference_pairs': len(corum_pairs),
+        'corum_total_correct_pairs': len(corum_true_positives)
+    }
+    
+    return cluster_results, global_metrics
