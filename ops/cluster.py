@@ -13,26 +13,27 @@ This module provides a collection of clustering algorithms and related utilities
 
 """
 
-import leidenalg
-from igraph import Graph
 import numpy as np
-import seaborn as sns
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-from scipy.spatial.distance import squareform
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-import phate
-import leidenalg
 from scipy import stats
+from scipy.stats import fisher_exact
+from scipy.spatial.distance import squareform
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from statsmodels.stats.multitest import multipletests
-import requests
+import matplotlib.pyplot as plt
+import seaborn as sns
+import igraph
+from igraph import Graph
+import leidenalg
+import phate
+import os
 import io
 import gzip
-import os
 import re
-from requests.adapters import HTTPAdapter, Retry
 from itertools import combinations
+import requests
+from requests.adapters import HTTPAdapter, Retry
 
 def load_gene_level_data(mitotic_path, interphase_path, all_path):
     """
@@ -149,6 +150,38 @@ def calculate_mitotic_percentage(df_mitotic, df_interphase):
     print(f"Median mitotic percentage: {result_df['mitotic_percentage'].median():.2f}%")
     
     return result_df
+
+def split_channels(df, channel_pair, all_channels):
+    """
+    Filter dataframe to only include features from specified channel pair,
+    removing features from other channels.
+    
+    Args:
+        df (pd.DataFrame): Input dataframe with features
+        channel_pair (str or tuple): Channels to keep. If 'all', keeps all channels
+        all_channels (list): List of all possible channels
+        
+    Returns:
+        pd.DataFrame: Filtered dataframe with features only from specified channels
+    """
+    # If 'all', return original dataset
+    if channel_pair == 'all':
+        return df.copy()
+    
+    # Find channels to remove (those not in channel_pair)
+    channels_to_remove = [ch for ch in all_channels if ch not in channel_pair]
+    
+    # Get all column names
+    columns = df.columns.tolist()
+    
+    # Find columns to remove (those containing removed channel names)
+    columns_to_remove = [col for col in columns 
+                        if any(ch in col for ch in channels_to_remove)]
+    
+    # Keep all columns except those from removed channels
+    columns_to_keep = [col for col in columns if col not in columns_to_remove]
+    
+    return df[columns_to_keep]
 
 def remove_low_number_genes(df, min_cells=10):
     """
@@ -661,7 +694,7 @@ def get_uniprot_data():
     print(f"Completed. Total entries: {len(df)}")
     return df
 
-def merge_phate_uniprot(df_phate):
+def merge_phate_uniprot(df_phate, database_path="databases"):
     """
     Merge PHATE clustering results with UniProt data
 
@@ -669,6 +702,8 @@ def merge_phate_uniprot(df_phate):
     -----------
     df_phate : pandas.DataFrame
         DataFrame with PHATE coordinates and cluster assignments
+    database_path : str, default='databases'
+        Path to saving/loading UniProt data
 
     Returns:
     --------
@@ -676,15 +711,26 @@ def merge_phate_uniprot(df_phate):
         Merged DataFrame with UniProt data
     
     """
-    df_phate['gene_symbol_0'] = df_phate['gene_symbol_0'].str.extract(r'([A-Za-z0-9]+)')[0]
+    # Make a copy to avoid modifying the original
+    df_phate = df_phate.copy()
+    
+    # If gene_symbol_0 is in the index, reset it to become a column
+    if df_phate.index.name == 'gene_symbol_0':
+        df_phate = df_phate.reset_index()
+    # If we still don't have gene_symbol_0 as a column, create it from the index
+    elif 'gene_symbol_0' not in df_phate.columns:
+        df_phate['gene_symbol_0'] = df_phate.index
+        df_phate = df_phate.reset_index(drop=True)
+    
+    uniprot_file = os.path.join(database_path, "uniprot_complete_data.csv")
     
     # Load UniProt data
-    if not os.path.exists("databases/uniprot_complete_data.csv"):
+    if not os.path.exists(uniprot_file):
         uniprot_df = get_uniprot_data()
-        uniprot_df.to_csv("databases/uniprot_complete_data.csv", index=False)
-        print(f"Saved {len(uniprot_df)} UniProt entries")
+        uniprot_df.to_csv(uniprot_file, index=False)
+        print(f"Saved {len(uniprot_df)} UniProt entries to {uniprot_file}")
     else:
-        uniprot_df = pd.read_csv("databases/uniprot_complete_data.csv")
+        uniprot_df = pd.read_csv(uniprot_file)
     
     # Split gene names and explode
     uniprot_df['gene_names'] = uniprot_df['Gene Names'].str.split()
@@ -866,7 +912,7 @@ def get_corum_data():
     print(f"Completed. Total complexes: {len(df)}")
     return df
 
-def process_interactions(df_clusters):
+def process_interactions(df_clusters, database_path="databases"):
     """
     Process cluster data against STRING and CORUM databases
 
@@ -874,127 +920,228 @@ def process_interactions(df_clusters):
     -----------
     df_clusters : pandas.DataFrame
         DataFrame with cluster information
+    database_path : str, default='databases'
+        Path to saving/loading STRING and CORUM data
 
     Returns:
     --------
-    pandas.DataFrame
-        DataFrame with cluster information and validation results
-
+    tuple:
+        - DataFrame with cluster information and validation results
+        - Dictionary with global metrics for both STRING and CORUM
     """
-    # Check if cached data exists, otherwise fetch and save
-    if not os.path.exists(f"databases/9606.protein.links.v12.0.txt"):
-        # Fetch STRING data
+    # Define file paths using os.path.join
+    string_file = os.path.join(database_path, "9606.protein.links.v12.0.txt")
+    corum_file = os.path.join(database_path, "corum_humanComplexes.txt")
+    
+    # Load STRING data
+    if not os.path.exists(string_file):
         string_df = get_string_data()
-        string_df.to_csv(f"databases/9606.protein.links.v12.0.txt", sep='\t', index=False)
-        print(f"Saved {len(string_df)} STRING interactions")
+        string_df.to_csv(string_file, sep='\t', index=False)
+        print(f"Saved {len(string_df)} STRING interactions to {string_file}")
     else:
-        print("Loading cached STRING interactions...")
-        string_df = pd.read_csv(f"databases/9606.protein.links.v12.0.txt", sep='\t')
-    
-    if not os.path.exists(f"databases/corum_humanComplexes.txt"):
-        # Fetch CORUM data
+        string_df = pd.read_csv(string_file, sep='\t')
+        
+    # Load CORUM data
+    if not os.path.exists(corum_file):
         corum_df = get_corum_data()
-        corum_df.to_csv(f"databases/corum_humanComplexes.txt", sep='\t', index=False)
-        print(f"Saved {len(corum_df)} CORUM complexes")
+        corum_df.to_csv(corum_file, sep='\t', index=False)
+        print(f"Saved {len(corum_df)} CORUM complexes to {corum_file}")
     else:
-        print("Loading cached CORUM complexes...")
-        corum_df = pd.read_csv(f"databases/corum_humanComplexes.txt", sep='\t')
+        corum_df = pd.read_csv(corum_file, sep='\t')
     
-    # Process STRING and CORUM data
+    # Process STRING data
     string_pairs = set(map(tuple, string_df[['protein1', 'protein2']].values))
     
-    # Process CORUM data
-    corum_complex_info = {}
+    # Process CORUM data - keep both pair and complex information
+    corum_complexes = []
     corum_pairs = set()
-    # Iterate over each complex
     for _, complex_row in corum_df.iterrows():
         if pd.isna(complex_row['subunits_gene_name']):
             continue
-        # Split gene names and create pairs
+        # Get all genes in complex
         genes = [gene.strip() for gene in complex_row['subunits_gene_name'].split(';')]
         if len(genes) >= 2:
+            # Store complete complex
+            corum_complexes.append({
+                'name': complex_row['complex_name'],
+                'genes': set(genes),
+                'size': len(genes)
+            })
+            # Store pairs for pair-based analysis
             pairs = set(combinations(sorted(genes), 2))
             corum_pairs.update(pairs)
-            for pair in pairs:
-                if pair not in corum_complex_info:
-                    corum_complex_info[pair] = []
-                corum_complex_info[pair].append(complex_row['ComplexName'])
+    
+    # Get all screened genes (from both STRING and CORUM columns)
+    screened_genes = set()
+    for _, row in df_clusters.iterrows():
+        screened_genes.update(gene.strip() for gene in row['gene_symbol_0'].replace(', ', ',').split(','))
+        screened_genes.update(gene.strip() for gene in row['STRING'].replace(', ', ',').split(','))
     
     # Process cluster data
     all_string_predicted_pairs = set()
-    all_corum_predicted_pairs = set()
-    
-    # Iterate over each cluster
+    all_cluster_pairs = set()
+    all_corum_cluster_pairs = set()
     results = []
+    
     for _, row in df_clusters.iterrows():
         cluster_num = row['cluster_number']
-        genes_corum = set(gene.strip() for gene in row['gene_symbol_0'].replace(', ', ',').split(','))
+        cluster_genes = set(gene.strip() for gene in row['gene_symbol_0'].replace(', ', ',').split(','))
         genes_string = set(gene.strip() for gene in row['STRING'].replace(', ', ',').split(','))
         
-        # Find matching pairs in CORUM
-        corum_cluster_pairs = set()
-        if len(genes_corum) >= 2:
-            corum_cluster_pairs = set(combinations(sorted(genes_corum), 2))
-            all_corum_predicted_pairs.update(corum_cluster_pairs)
-        
-        # Find matching pairs in STRING
+        # STRING analysis
         string_cluster_pairs = set()
         if len(genes_string) >= 2:
             string_cluster_pairs = set(combinations(sorted(genes_string), 2))
             all_string_predicted_pairs.update(string_cluster_pairs)
-        
         matching_string_pairs = string_cluster_pairs & string_pairs if string_cluster_pairs else set()
-        matching_corum_pairs = corum_cluster_pairs & corum_pairs if corum_cluster_pairs else set()
-
-        # Find matching CORUM complexes        
-        matching_complexes = []
-        for pair in matching_corum_pairs:
-            if pair in corum_complex_info:
-                matching_complexes.extend(corum_complex_info[pair])
         
-        # Remove duplicates
-        unique_complexes = list(dict.fromkeys(matching_complexes))
+        # CORUM complex-level analysis
+        enriched_complexes = []
+        for complex_info in corum_complexes:
+            complex_genes = complex_info['genes']
+            screened_complex_genes = complex_genes & screened_genes
+            
+            # Apply complex filtering criteria
+            if (len(screened_complex_genes) >= 3 and 
+                len(screened_complex_genes) >= (2/3 * len(complex_genes))):
+                
+                # Calculate overlap with cluster
+                overlap_genes = cluster_genes & screened_complex_genes
+                
+                # Fisher's exact test
+                table = [
+                    [len(overlap_genes), len(screened_complex_genes - cluster_genes)],
+                    [len(cluster_genes - screened_complex_genes), 
+                     len(screened_genes - cluster_genes - screened_complex_genes)]
+                ]
+                odds_ratio, pvalue = fisher_exact(table)
+                
+                if pvalue < 0.05:  # Store for FDR correction
+                    enriched_complexes.append({
+                        'complex_name': complex_info['name'],
+                        'pvalue': pvalue,
+                        'overlap_size': len(overlap_genes),
+                        'complex_size': len(screened_complex_genes)
+                    })
+        
+        # Apply FDR correction to enriched complexes
+        if enriched_complexes:
+            pvals = [x['pvalue'] for x in enriched_complexes]
+            _, pvals_corrected, _, _ = multipletests(pvals, method='fdr_bh')
+            significant_complexes = [
+                enr for enr, p_adj in zip(enriched_complexes, pvals_corrected)
+                if p_adj < 0.05
+            ]
+        else:
+            significant_complexes = []
+            
+        # CORUM pair-based analysis for this cluster
+        if len(cluster_genes) >= 2:
+            cluster_pairs = set(combinations(sorted(cluster_genes), 2))
+            all_cluster_pairs.update(cluster_pairs)
+            # Find which pairs are also in CORUM
+            matching_corum = cluster_pairs & corum_pairs
+            all_corum_cluster_pairs.update(matching_corum)
         
         # Store results
         results.append({
             'cluster_number': cluster_num,
             'total_string_pairs': len(string_cluster_pairs),
-            'total_corum_pairs': len(corum_cluster_pairs),
             'string_validated_pairs': len(matching_string_pairs),
-            'corum_validated_pairs': len(matching_corum_pairs),
             'string_validation_ratio': len(matching_string_pairs) / len(string_cluster_pairs) if string_cluster_pairs else 0,
-            'corum_validation_ratio': len(matching_corum_pairs) / len(corum_cluster_pairs) if corum_cluster_pairs else 0,
-            'matching_corum_complexes': '; '.join(unique_complexes)
+            'enriched_corum_complexes': [x['complex_name'] for x in significant_complexes],
+            'num_enriched_complexes': len(significant_complexes)
         })
     
-    # Calculate global metrics
+    # Calculate global STRING metrics
     string_true_positives = all_string_predicted_pairs & string_pairs
     string_precision = len(string_true_positives) / len(all_string_predicted_pairs) if all_string_predicted_pairs else 0
     string_recall = len(string_true_positives) / len(string_pairs) if string_pairs else 0
     string_f1 = 2 * (string_precision * string_recall) / (string_precision + string_recall) if (string_precision + string_recall) else 0
-
-    corum_true_positives = all_corum_predicted_pairs & corum_pairs
-    corum_precision = len(corum_true_positives) / len(all_corum_predicted_pairs) if all_corum_predicted_pairs else 0
-    corum_recall = len(corum_true_positives) / len(corum_pairs) if corum_pairs else 0
+    
+    # Calculate CORUM pair-based metrics (as shown in the plot)
+    corum_precision = len(all_corum_cluster_pairs) / len(all_cluster_pairs) if all_cluster_pairs else 0
+    corum_recall = len(all_corum_cluster_pairs) / len(corum_pairs) if corum_pairs else 0
     corum_f1 = 2 * (corum_precision * corum_recall) / (corum_precision + corum_recall) if (corum_precision + corum_recall) else 0
-
+    
     results_df = pd.DataFrame(results)
     cluster_results = df_clusters.merge(results_df, on='cluster_number')
     
-    # Add global metrics
+    # Global metrics including both STRING and CORUM results
     global_metrics = {
+        'num_clusters': df_clusters['cluster_number'].nunique(),  
         'string_global_precision': string_precision,
         'string_global_recall': string_recall,
         'string_global_f1': string_f1,
         'string_total_predicted_pairs': len(all_string_predicted_pairs),
         'string_total_reference_pairs': len(string_pairs),
         'string_total_correct_pairs': len(string_true_positives),
-        'corum_global_precision': corum_precision,
-        'corum_global_recall': corum_recall,
-        'corum_global_f1': corum_f1,
-        'corum_total_predicted_pairs': len(all_corum_predicted_pairs),
-        'corum_total_reference_pairs': len(corum_pairs),
-        'corum_total_correct_pairs': len(corum_true_positives)
+        'corum_precision': corum_precision,  # Fraction of cluster pairs in CORUM
+        'corum_recall': corum_recall,        # Fraction of CORUM pairs in clusters
+        'corum_f1': corum_f1,
+        'corum_total_cluster_pairs': len(all_cluster_pairs),
+        'corum_total_complex_pairs': len(corum_pairs),
+        'corum_matching_pairs': len(all_corum_cluster_pairs),
+        'num_enriched_complexes': sum(len(row['enriched_corum_complexes']) for row in results)
     }
     
     return cluster_results, global_metrics
+
+def aggregate_resolution_metrics(output_dir, dataset_types, channel_pairs, leiden_resolutions):
+    """
+    Aggregate metrics across different resolutions into a single CSV.
+
+    Parameters:
+    -----------
+    output_dir : str
+        Directory containing resolution-wise metrics
+    dataset_types : list
+        List of dataset types to include
+    channel_pairs : list
+        List of channel pairs to include
+    leiden_resolutions : list
+        List of Leiden resolutions to include
+
+    Returns:
+    --------
+    pandas.DataFrame
+        DataFrame with aggregated metrics
+    
+    """
+    all_metrics = []
+    
+    for channel_pair in channel_pairs:
+        # Handle channel pair directory name
+        if channel_pair == 'all':
+            pair_dir = os.path.join(output_dir, "all_channels")
+        else:
+            pair_dir = os.path.join(output_dir, f"channels_{'_'.join(channel_pair)}")
+            
+        for dataset_type in dataset_types:
+            for resolution in leiden_resolutions:
+                resolution_dir = os.path.join(pair_dir, f"resolution_{resolution}")
+                metrics_file = os.path.join(resolution_dir, "csv", f"{dataset_type}_global_metrics.txt")
+                
+                if os.path.exists(metrics_file):
+                    # Read metrics
+                    metrics = {}
+                    with open(metrics_file, 'r') as f:
+                        for line in f:
+                            key, value = line.strip().split(': ')
+                            metrics[key] = float(value)
+                    
+                    # Add metadata
+                    metrics['resolution'] = resolution
+                    metrics['dataset_type'] = dataset_type
+                    metrics['channel_pair'] = str(channel_pair)
+                    
+                    all_metrics.append(metrics)
+    
+    # Convert to DataFrame
+    df_metrics = pd.DataFrame(all_metrics)
+    
+    # Save to CSV
+    output_file = os.path.join(output_dir, "resolution_metrics_comparison.csv")
+    df_metrics.to_csv(output_file, index=False)
+    
+    return df_metrics
