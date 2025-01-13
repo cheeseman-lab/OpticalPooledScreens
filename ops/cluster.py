@@ -1049,7 +1049,7 @@ def process_interactions(df_clusters, database_path="databases"):
             'total_string_pairs': len(string_cluster_pairs),
             'string_validated_pairs': len(matching_string_pairs),
             'string_validation_ratio': len(matching_string_pairs) / len(string_cluster_pairs) if string_cluster_pairs else 0,
-            'enriched_corum_complexes': [x['complex_name'] for x in significant_complexes],
+            'enriched_corum_complexes': ', '.join(x['complex_name'] for x in significant_complexes),
             'num_enriched_complexes': len(significant_complexes)
         })
     
@@ -1139,9 +1139,5 @@ def aggregate_resolution_metrics(output_dir, dataset_types, channel_pairs, leide
     
     # Convert to DataFrame
     df_metrics = pd.DataFrame(all_metrics)
-    
-    # Save to CSV
-    output_file = os.path.join(output_dir, "resolution_metrics_comparison.csv")
-    df_metrics.to_csv(output_file, index=False)
-    
+        
     return df_metrics
