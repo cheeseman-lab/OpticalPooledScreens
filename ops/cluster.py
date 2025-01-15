@@ -1087,6 +1087,50 @@ def process_interactions(df_clusters, database_path="databases"):
     
     return cluster_results, global_metrics
 
+def merge_resolution_clusters(output_dir, dataset_type, channel_pair, resolutions):
+    """
+    Merge clustering results from different resolutions into a single dataframe.
+    
+    Parameters:
+    -----------
+    output_dir : str
+        Base output directory
+    dataset_type : str
+        Type of dataset ('mitotic', 'interphase', 'all')
+    channel_pair : str or tuple
+        Channel combination being analyzed
+    resolutions : list
+        List of resolution values used
+        
+    Returns:
+    --------
+    pandas.DataFrame
+        Merged dataframe with clusters from all resolutions
+    """
+    # Determine the pair directory
+    if channel_pair == 'all':
+        pair_dir = os.path.join(output_dir, "all_channels")
+    else:
+        pair_dir = os.path.join(output_dir, f"channels_{'_'.join(channel_pair)}")
+    
+    # Initialize with first resolution to get gene symbols
+    first_res = resolutions[0]
+    first_file = os.path.join(pair_dir, f"resolution_{first_res}/csv/{dataset_type}_clustering.csv")
+    merged_df = pd.read_csv(first_file)[['gene_symbol_0', 'cluster']]
+    merged_df = merged_df.rename(columns={'cluster': f'cluster_res_{first_res}'})
+    
+    # Add clusters from other resolutions
+    for res in resolutions[1:]:
+        file_path = os.path.join(pair_dir, f"resolution_{res}/csv/{dataset_type}_clustering.csv")
+        temp_df = pd.read_csv(file_path)[['gene_symbol_0', 'cluster']]
+        temp_df = temp_df.rename(columns={'cluster': f'cluster_res_{res}'})
+        merged_df = merged_df.merge(temp_df, on='gene_symbol_0', how='outer')
+
+    # Sort ascending by the last column
+    merged_df = merged_df.sort_values(f'cluster_res_{resolutions[-1]}')
+    
+    return merged_df
+
 def aggregate_resolution_metrics(output_dir, dataset_types, channel_pairs, leiden_resolutions):
     """
     Aggregate metrics across different resolutions into a single CSV.
@@ -1141,3 +1185,4 @@ def aggregate_resolution_metrics(output_dir, dataset_types, channel_pairs, leide
     df_metrics = pd.DataFrame(all_metrics)
         
     return df_metrics
+
