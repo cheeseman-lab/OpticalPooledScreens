@@ -11,6 +11,7 @@ det_range = (0.06, 0.065)
 score = 0.1
 threshold = 2
 
+# Read data from HDF file
 df_align_no_gate = pd.read_hdf('merge_3/hdf/fast_alignment_all.hdf')
 
 # Filter DataFrame based on the filtering condition

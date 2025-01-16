@@ -21,16 +21,12 @@ THRESHOLDS = {
 }
 
 # Channel settings
-CHANNEL_DICT = {
-    'dapi-tubulin': 'Channel-DAPI_1x1-GFP_1x1.tif',
-    'gh2ax': 'Channel-A594_1x1.tif',
-    'phalloidin': 'Channel-AF750_1x1.tif',
-} 
+CHANNEL_DICT = None
 PLOTTING_DICT = {
-    'dapi': {'filename': 'dapi-tubulin', 'channel': 0},
-    'tubulin': {'filename': 'dapi-tubulin', 'channel': 1},
-    'gh2ax': {'filename': 'gh2ax'},
-    'phalloidin': {'filename': 'phalloidin'}
+    'dapi': {'filename': 'filename', 'channel': 0},
+    'coxiv': {'filename': 'filename', 'channel': 1},
+    'cenpa': {'filename': 'filename', 'channel': 2},
+    'wga': {'filename': 'filename', 'channel': 3}
 }
 CHANNELS = list(PLOTTING_DICT.keys())
 
@@ -45,9 +41,9 @@ df_barcodes = (df_barcodes[['gene_symbol_0', 'sgRNA_0']]
 
 DISPLAY_RANGES = {
     'dapi': [(0, 14000)],
-    'tubulin': [(0, 13000)],
-    'gh2ax': [(0, 6000)],
-    'phalloidin': [(350, 2000)]
+    'coxiv': [(0, 13000)],
+    'cenpa': [(0, 6000)],
+    'wga': [(350, 2000)]
 }
 
 # Final target rule
@@ -57,6 +53,9 @@ rule all:
         'aggregate_4/hdf/transformed_data.hdf',
         'aggregate_4/hdf/mitotic_montage_data.hdf',
         'aggregate_4/hdf/interphase_montage_data.hdf',
+        'aggregate_4/csv/mitotic_gene_data.csv',
+        'aggregate_4/csv/interphase_gene_data.csv',
+        'aggregate_4/csv/all_gene_data.csv',
         expand('montage/mitotic/{gene}_{sgrna}_{channel}.tif',
                zip, 
                gene=df_barcodes['gene_symbol_0'], 
@@ -66,10 +65,7 @@ rule all:
                zip, 
                gene=df_barcodes['gene_symbol_0'], 
                sgrna=df_barcodes['sgRNA_0'],
-               channel=df_barcodes['channel']),      
-        'aggregate_4/csv/mitotic_gene_data.csv',
-        'aggregate_4/csv/interphase_gene_data.csv',
-        'aggregate_4/csv/all_gene_data.csv',
+               channel=df_barcodes['channel']),        
 
 # Clean and transform data
 rule clean_and_transform:
@@ -80,6 +76,7 @@ rule clean_and_transform:
         'aggregate_4/hdf/transformed_data.hdf'
     resources:
         mem_mb=500000
+    priority: 1
     run:
         raw_df = pd.read_hdf(input[0])
         clean_df = clean_cell_data(
@@ -105,6 +102,7 @@ rule standardize_features:
         'aggregate_4/hdf/standardized_data.hdf'
     resources:
         mem_mb=500000
+    priority: 1
     run:
         df = pd.read_hdf(input[0])
         feature_start_idx = df.columns.get_loc(FEATURE_START)
@@ -123,7 +121,7 @@ rule standardize_features:
         
         standardized_df.to_hdf(output[0], key='data', mode='w')
 
-# TO DO: rule concatenate data -- missing for now
+# rule concatenate data -- missing for now
 
 # Split mitotic and interphase data
 rule split_phases:
@@ -134,6 +132,7 @@ rule split_phases:
         'aggregate_4/hdf/interphase_data.hdf'
     resources:
         mem_mb=500000
+    priority: 1
     run:
         df = pd.read_hdf(input[0])
         mitotic_df, interphase_df = split_mitotic_simple(df, THRESHOLDS)
@@ -170,7 +169,7 @@ rule prepare_interphase_montage_data:
         df_interphase = add_filenames(df_interphase, base_ph_file_path='input_ph_tif', 
                                  multichannel_dict=CHANNEL_DICT, subset=True)
         df_interphase.to_hdf(output[0], key='data', mode='w')
-    
+
 # Generate montages
 rule generate_mitotic_montage:
     input:
@@ -220,7 +219,7 @@ rule generate_interphase_montage:
         else:
             # Create empty file if no cells found
             open(output[0], 'w').close()
-
+    
 # Process mitotic gene data
 rule process_mitotic_gene_data:
     input:
@@ -229,6 +228,7 @@ rule process_mitotic_gene_data:
         'aggregate_4/csv/mitotic_gene_data.csv'
     resources:
         mem_mb=100000
+    priority: 1
     run:
         df = pd.read_hdf(input[0])
         feature_start_idx = df.columns.get_loc(FEATURE_START)
@@ -272,6 +272,7 @@ rule process_interphase_gene_data:
         'aggregate_4/csv/interphase_gene_data.csv'
     resources:
         mem_mb=500000
+    priority: 1
     run:
         df = pd.read_hdf(input[0])
         feature_start_idx = df.columns.get_loc(FEATURE_START)
@@ -315,6 +316,7 @@ rule process_all_gene_data:
         'aggregate_4/csv/all_gene_data.csv'
     resources:
         mem_mb=300000
+    priority: 1
     run:
         df = pd.read_hdf(input[0])
         feature_start_idx = df.columns.get_loc(FEATURE_START)

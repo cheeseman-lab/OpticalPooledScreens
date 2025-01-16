@@ -37,8 +37,8 @@ THRESHOLD_CELL = 500  # Unused
 NUCLEUS_AREA = (250, 3500)  # Unused
 
 # Define cellprofiler parameters
-FOCI_CHANNEL = 1
-CHANNEL_NAMES = ['dapi','cenpa','coxiv','wga']
+FOCI_CHANNEL = 2
+CHANNEL_NAMES = ['dapi','coxiv', 'cenpa','wga']
 
 # Define function to read CSV files
 def get_file(f):

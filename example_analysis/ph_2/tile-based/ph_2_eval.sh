@@ -2,8 +2,8 @@
 #SBATCH --job-name=ph_2_eval
 #SBATCH --partition=20
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=192G
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=500G
 #SBATCH --time=2:00:00
 #SBATCH --output out/ph_2_eval-%j.out
 

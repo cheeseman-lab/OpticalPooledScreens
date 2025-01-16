@@ -90,6 +90,11 @@ plt.figure(figsize=(12, 6))
 plot_gene_symbol_histogram(cells, x_cutoff=3000)
 save_plot(plt.gcf(), 'gene_symbol_histogram.png')
 
+plt.figure(figsize=(12, 6))
+barcodes_per_gene = plot_barcodes_per_gene(cells, cutoff=4)
+save_plot(plt.gcf(), 'barcodes_per_gene_piechart.png')
+barcodes_per_gene.to_csv(os.path.join(qc_dir, 'barcodes_per_gene.csv'), index=False)
+
 num_rows = len(sbs_info)
 print(f"The number of cells extracted in the sbs step is: {num_rows}")
 
